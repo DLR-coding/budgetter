@@ -41,6 +41,8 @@ export const addMonths = (m: Month, n: number): Month => {
 };
 
 export const monthOf = (date: Date | string): Month => {
+  // Une date 'AAAA-MM-JJ' (colonne Postgres) donne son mois tel quel : new Date() la lirait en UTC.
+  if (typeof date === 'string' && /^\d{4}-\d{2}/.test(date)) return date.slice(0, 7);
   const d = typeof date === 'string' ? new Date(date) : date;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
