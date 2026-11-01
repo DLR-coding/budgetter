@@ -26,6 +26,7 @@ mobile/
     (tabs)/reglages.tsx           à construire
     saisie.tsx                    saisie rapide (montant ou formule)
   src/lib/formula.ts              « (12+2+5*2,99) » -> articles
+  src/lib/*.test.ts               tests de la logique (`npm test`)
   src/lib/budget.ts               prévu / réel, soldes, projection
   src/lib/data.ts                 lecture / écriture Supabase
   src/components/GlassTabBar.tsx  navbar en verre + bouton « + »
@@ -41,20 +42,14 @@ mobile/
 4. **Project Settings → API** : note l'URL du projet et la clé `anon`.
 
 ### 2. L'appli
-Prérequis : Node.js 20+ et l'appli **Expo Go** sur ton téléphone Android.
+Prérequis : Node.js 24 (`nvm use` dans `mobile/`) et l'appli **Expo Go** (SDK 58) sur ton
+téléphone Android.
 
 ```bash
-npx create-expo-app@latest budget-app --template default
-cd budget-app
-npx expo install @supabase/supabase-js @react-native-async-storage/async-storage \
-  react-native-url-polyfill expo-blur @expo-google-fonts/inter expo-font
-```
-
-Puis remplace le dossier `app/` du projet par celui de `mobile/app/`, copie `mobile/src/`
-à la racine, et crée un fichier `.env` à partir de `mobile/.env.example`.
-
-```bash
-npx expo start
+cd mobile
+npm install
+cp .env.example .env   # puis remplis l'URL et la clé anon de l'étape 1.4
+npx expo start --tunnel   # --tunnel : le réseau WSL n'est pas joignable depuis le téléphone
 ```
 
 Scanne le QR code avec Expo Go : l'appli s'ouvre sur ton téléphone. Connecte-toi
@@ -78,6 +73,12 @@ EAS te donne un lien vers un fichier `.apk` à installer sur le téléphone.
 ```bash
 npx supabase functions deploy parse-receipt
 npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+```
+
+### Vérifier (dans `mobile/`)
+```bash
+npm run typecheck   # tsc --noEmit
+npm test            # node --test, sans dépendance
 ```
 
 ## Règles de calcul (validées)

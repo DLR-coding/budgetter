@@ -2,7 +2,7 @@ import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, font } from '../theme';
 
@@ -14,7 +14,7 @@ const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 const LABELS: Record<string, string> = { index: 'Mois', saisies: 'Saisies', reglages: 'Réglages' };
 
 // Barre de navigation flottante en verre (flou + translucide), bouton « + » séparé.
-export function GlassTabBar({ state, navigation }: BottomTabBarProps) {
+export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.wrap, { bottom: Math.max(insets.bottom, 12) + 12 }]} pointerEvents="box-none">
@@ -28,7 +28,7 @@ export function GlassTabBar({ state, navigation }: BottomTabBarProps) {
                 key={route.key}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: focused }}
-                onPress={() => !focused && navigation.navigate(route.name)}
+                onPress={() => !focused && navigateToTab(route.key)}
                 style={[styles.tab, focused && styles.tabActive]}
               >
                 <Ionicons name={ICONS[route.name] ?? 'ellipse-outline'} size={20} color={focused ? '#fff' : colors.textMuted} />

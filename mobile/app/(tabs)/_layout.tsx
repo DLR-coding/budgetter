@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Tabs } from 'expo-router/js-tabs';
 import { GlassTabBar } from '../../src/components/GlassTabBar';
 import { colors } from '../../src/theme';
 

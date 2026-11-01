@@ -57,6 +57,13 @@ dépendance à React ni Supabase, et la couvrir de tests.
 - [ ] Étape 3 : scan de ticket (photo → Edge Function → écran de validation)
 - [ ] V1 : import de l’historique Excel, mémorisation des catégories par commerçant
 
+## Commandes (dans `mobile/`)
+
+- `npm run typecheck` (= `npx tsc --noEmit`), `npm test` (runner intégré `node --test`,
+  TS lu nativement par Node 24 : importer avec l'extension `./budget.ts`), `npx expo-doctor`.
+- Ajouter un paquet : toujours `npx expo install <paquet>` (versions compatibles SDK).
+- Expo **SDK 58** : les onglets JS viennent de `expo-router/js-tabs` (plus de `@react-navigation`).
+
 ## Environnement
 
 - Développement sous **WSL (Debian)**. Le téléphone Android utilise Expo Go :
