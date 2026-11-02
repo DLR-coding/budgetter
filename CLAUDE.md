@@ -39,7 +39,7 @@ libellé, quantité, prix unitaire, catégorie. Une dépense simple = 1 ligne.
 - Chaque mois a son prévu par catégorie. Un dépassement ou une économie **ne se reporte jamais**
   sur les mois suivants.
 - Mois passés : on compte le réel. Mois en cours et futurs : on compte le prévu.
-- Solde de départ = ajustement du mois s'il existe, sinon solde final du mois précédent.
+- Solde de départ = ajustement du mois s'il existe (daté du jour J, il inclut déjà les saisies jusqu’à J : mois passé + réel après J ; mois en cours + max(0, prévu − réel jusqu’à J) par catégorie), sinon solde final du mois précédent.
 - « Jusqu’à quand je tiens » = dernier mois dont le solde projeté reste ≥ 0.
 - Saisie : **montant simple par défaut**. Une formule `(12+2+1.55+(5*2.99))` est acceptée
   (mode avancé, jamais imposé) et devient plusieurs lignes ; `5*2.99` = quantité 5 × 2,99.

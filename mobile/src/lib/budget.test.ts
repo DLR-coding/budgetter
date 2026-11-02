@@ -2,7 +2,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { addMonths, monthOf, plannedFor, summarizeMonths, runway, formatEuros,
   formatAmount, splitEuros, monthLabel, parseSignedCents, tintFor, computedStartCents, groupBreakdown,
-  collapseRows, shortMonthLabel, endOfMonthLabel, projectionLabels, runwayHeadline, balanceStartMonth } from './budget.ts';
+  collapseRows, shortMonthLabel, endOfMonthLabel, projectionLabels, runwayHeadline, balanceStartMonth,
+  computedBalanceOn } from './budget.ts';
 import type { ActualLine, Adjustment } from './budget.ts';
 import type { Category, MonthSummary } from './budget.ts';
 
@@ -112,6 +113,59 @@ describe('catégorie archivée', () => {
     assert.equal(jan.endCents, 88000);
     assert.equal(feb.plannedExpenseCents, 0);
     assert.equal(feb.endCents, 88000);
+  });
+});
+
+describe('ajustement daté', () => {
+  // Novembre : salaire 2 000 € le 1er, courses 300 € le 10 et 50 € le 20. Solde constaté le 15 : 1 000 €.
+  const actuals: ActualLine[] = [
+    { categoryId: 'salaire', month: '2026-11', date: '2026-11-01', amountCents: 200000, exceptional: false },
+    { categoryId: 'courses', month: '2026-11', date: '2026-11-10', amountCents: 30000, exceptional: false },
+    { categoryId: 'courses', month: '2026-11', date: '2026-11-20', amountCents: 5000, exceptional: false },
+  ];
+  const run = (currentMonth: string, adjustedOn: string | null, acts = actuals) => summarizeMonths({
+    months: ['2026-11', '2026-12'], currentMonth, categories: [salaire, courses, livret], overrides: [],
+    actuals: acts, adjustments: [{ month: '2026-11', balanceCents: 100000, adjustedOn }],
+  });
+
+  test('mois passé : seul le réel après le jour ajusté s’ajoute (pas de double comptage)', () => {
+    const [nov] = run('2026-12', '2026-11-15');
+    assert.equal(nov.startCents, 100000);
+    assert.equal(nov.endCents, 100000 - 5000);
+    assert.equal(nov.actualExpenseCents, 35000); // le réel affiché reste celui du mois entier
+  });
+
+  test('mois en cours : reste du prévu après le réel déjà inclus, jamais négatif', () => {
+    const [nov, dec] = run('2026-11', '2026-11-15');
+    // salaire : max(0, 2 000 − 2 000) = 0 ; courses : max(0, 400 − 300) = 100.
+    assert.equal(nov.endCents, 100000 - 10000);
+    const over = run('2026-11', '2026-11-15', [{ ...actuals[1], amountCents: 50000 }]);
+    // courses déjà à 500 € pour 400 € prévus : rien de plus ; salaire pas encore reçu : +2 000.
+    assert.equal(over[0].endCents, 100000 + 200000);
+    assert.equal(dec.startCents, nov.endCents);
+  });
+
+  test('sans date : comportement d’un ajustement en début de mois', () => {
+    const [passe] = run('2026-12', null);
+    assert.equal(passe.endCents, 100000 + 200000 - 35000);
+    const [enCours] = run('2026-11', null);
+    assert.equal(enCours.endCents, 100000 + 200000 - 40000);
+  });
+
+  test('mois futur : la date est ignorée', () => {
+    const [nov] = run('2026-10', '2026-11-15');
+    assert.equal(nov.endCents, 100000 + 200000 - 40000);
+  });
+
+  test('computedBalanceOn : départ calculé + réel jusqu’au jour inclus, hors épargne', () => {
+    const acts = [...actuals, { categoryId: 'livret', month: '2026-11', date: '2026-11-02', amountCents: 999, exceptional: false }];
+    const sums = summarizeMonths({
+      months: ['2026-10', '2026-11'], currentMonth: '2026-11', categories: [salaire, courses, livret], overrides: [],
+      actuals: acts, adjustments: [], initialStartCents: 1000,
+    });
+    const start = computedStartCents(sums, '2026-11');
+    assert.equal(computedBalanceOn(sums, [salaire, courses, livret], acts, '2026-11-10'), start + 200000 - 30000);
+    assert.equal(computedBalanceOn(sums, [salaire, courses, livret], acts, '2026-11-09'), start + 200000);
   });
 });
 

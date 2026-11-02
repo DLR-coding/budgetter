@@ -5,6 +5,9 @@
 //  - Mois passés : on compte le réel. Mois en cours et futurs : on compte le prévu.
 //  - Le solde de départ d'un mois = l'ajustement saisi pour ce mois s'il existe,
 //    sinon le solde de fin du mois précédent.
+//  - Un ajustement daté du jour J inclut déjà les lignes jusqu'à J : mois passé, seul le réel
+//    après J s'y ajoute ; mois en cours, chaque catégorie ajoute max(0, prévu − réel jusqu'à J).
+//    Mois futur ou ajustement sans date : comme un ajustement en début de mois.
 // Tous les montants sont en centimes. Un mois est noté 'AAAA-MM'.
 
 export type Month = string; // 'AAAA-MM'
@@ -18,8 +21,11 @@ export type Category = {
 };
 
 export type PlannedOverride = { categoryId: string; month: Month; amountCents: number };
-export type ActualLine = { categoryId: string; month: Month; amountCents: number; exceptional: boolean };
-export type Adjustment = { month: Month; balanceCents: number };
+export type ActualLine = {
+  categoryId: string; month: Month; amountCents: number; exceptional: boolean;
+  date?: string; // 'AAAA-MM-JJ' ; absente : comptée comme antérieure à un ajustement daté
+};
+export type Adjustment = { month: Month; balanceCents: number; adjustedOn?: string | null }; // 'AAAA-MM-JJ', null = début de mois
 
 export type MonthSummary = {
   month: Month;
@@ -72,7 +78,9 @@ export function summarizeMonths(params: {
     const status = month < currentMonth ? 'passe' : month === currentMonth ? 'en_cours' : 'futur';
     const adj = adjustments.find((a) => a.month === month);
     const startCents = adj ? adj.balanceCents : previousEnd;
+    const cut = status === 'futur' ? null : adj?.adjustedOn ?? null; // dernier jour déjà inclus dans le départ
 
+    let incomeCents = 0, expenseCents = 0;
     let plannedIncome = 0, plannedExpense = 0, actualIncome = 0, actualExpense = 0, actualExpenseNoExc = 0;
     for (const cat of categories) {
       if (cat.kind === 'epargne') continue;
@@ -80,13 +88,12 @@ export function summarizeMonths(params: {
       const lines = actuals.filter((a) => a.categoryId === cat.id && a.month === month);
       const actual = lines.reduce((s, l) => s + l.amountCents, 0);
       const actualNoExc = lines.filter((l) => !l.exceptional).reduce((s, l) => s + l.amountCents, 0);
-      if (cat.kind === 'revenu') { plannedIncome += planned; actualIncome += actual; }
-      else { plannedExpense += planned; actualExpense += actual; actualExpenseNoExc += actualNoExc; }
+      const before = cut ? lines.filter((l) => (l.date ?? '') <= cut).reduce((s, l) => s + l.amountCents, 0) : 0;
+      const counted = status === 'passe' ? actual - before : cut ? Math.max(0, planned - before) : planned;
+      if (cat.kind === 'revenu') { plannedIncome += planned; actualIncome += actual; incomeCents += counted; }
+      else { plannedExpense += planned; actualExpense += actual; actualExpenseNoExc += actualNoExc; expenseCents += counted; }
     }
 
-    const useActual = status === 'passe';
-    const incomeCents = useActual ? actualIncome : plannedIncome;
-    const expenseCents = useActual ? actualExpense : plannedExpense;
     const endCents = startCents + incomeCents - expenseCents;
 
     out.push({
@@ -172,6 +179,16 @@ export function computedStartCents(summaries: MonthSummary[], month: Month): num
   const i = summaries.findIndex((s) => s.month === month);
   if (i === -1) throw new Error(`Mois ${month} absent des soldes calculés`);
   return i > 0 ? summaries[i - 1].endCents : 0; // premier mois chargé : départ à 0, comme summarizeMonths
+}
+
+/** « Calculé par l'appli » au jour `date` ('AAAA-MM-JJ') : départ calculé + réel du mois jusqu'à ce jour inclus (hors épargne). */
+export function computedBalanceOn(summaries: MonthSummary[], categories: Category[], actuals: ActualLine[], date: string): number {
+  const month = date.slice(0, 7);
+  const kind = new Map(categories.map((c) => [c.id, c.kind]));
+  return actuals.filter((l) => l.month === month && (l.date ?? '') <= date).reduce((s, l) => {
+    const k = kind.get(l.categoryId);
+    return k === 'revenu' ? s + l.amountCents : k === 'depense' ? s - l.amountCents : s;
+  }, computedStartCents(summaries, month));
 }
 
 export type CategoryLine = { id: string; name: string; plannedCents: number; actualCents: number };

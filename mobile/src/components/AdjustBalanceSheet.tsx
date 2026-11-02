@@ -1,4 +1,5 @@
 // Panneau « Ajuster le solde » (maquette 6) : remplace le solde de départ du mois par le solde bancaire réel.
+// Mois en cours : `adjustedOn` = aujourd'hui, le solde saisi inclut déjà les saisies jusqu'à ce jour.
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { formatEuros, monthName, parseSignedCents, type Month } from '../lib/budget';
@@ -6,8 +7,8 @@ import { setBalanceAdjustment } from '../lib/data';
 import { colors, font, radius } from '../theme';
 import { BottomSheet, Divider, PrimaryButton } from './ui';
 
-export function AdjustBalanceSheet({ visible, month, computedCents, onClose, onSaved }: {
-  visible: boolean; month: Month; computedCents: number; onClose: () => void; onSaved: () => void;
+export function AdjustBalanceSheet({ visible, month, adjustedOn, computedCents, onClose, onSaved }: {
+  visible: boolean; month: Month; adjustedOn: string | null; computedCents: number; onClose: () => void; onSaved: () => void;
 }) {
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -27,7 +28,7 @@ export function AdjustBalanceSheet({ visible, month, computedCents, onClose, onS
     if (cents == null) return;
     setSaving(true);
     try {
-      await setBalanceAdjustment(month, cents);
+      await setBalanceAdjustment(month, cents, adjustedOn);
       onSaved();
     } catch (e) {
       setError((e as Error).message);
@@ -40,7 +41,9 @@ export function AdjustBalanceSheet({ visible, month, computedCents, onClose, onS
     <BottomSheet visible={visible} onClose={onClose}>
       <View style={{ gap: 6 }}>
         <Text style={s.title} accessibilityRole="header">Ajuster le solde</Text>
-        <Text style={s.lead}>Remplace le solde de départ de {monthName(month)} par ce que tu vois sur ton compte.</Text>
+        <Text style={s.lead}>
+          Remplace le solde {adjustedOn ? 'd’aujourd’hui' : `de départ de ${monthName(month)}`} par ce que tu vois sur ton compte.
+        </Text>
       </View>
 
       <View style={s.card}>

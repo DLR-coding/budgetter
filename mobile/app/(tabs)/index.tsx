@@ -6,9 +6,10 @@ import { AdjustBalanceSheet } from '../../src/components/AdjustBalanceSheet';
 import { RunwayChart } from '../../src/components/RunwayChart';
 import { Card, CircleButton, Divider, ProgressBar } from '../../src/components/ui';
 import {
-  addMonths, collapseRows, computedStartCents, formatAmount, formatEuros, groupBreakdown, monthLabel, monthName,
+  addMonths, collapseRows, computedBalanceOn, computedStartCents, formatAmount, formatEuros, groupBreakdown, monthLabel, monthName,
   monthOf, runwayHeadline, splitEuros, type CategoryLine, type Month,
 } from '../../src/lib/budget';
+import { isoDate } from '../../src/lib/articles';
 import { loadBudget } from '../../src/lib/data';
 import { colors, font, radius } from '../../src/theme';
 
@@ -57,6 +58,8 @@ export default function MonthScreen() {
     return <View style={[s.screen, { justifyContent: 'center' }]}><ActivityIndicator color={colors.accent} /></View>;
   }
 
+  // Mois en cours : ajustement daté d'aujourd'hui (voir summarizeMonths) ; autres mois : début de mois.
+  const adjustedOn = month === current ? isoDate(new Date()) : null;
   const headline = horizon.length ? runwayHeadline(horizon) : null;
   const hero = summary ? splitEuros(summary.endCents) : null;
 
@@ -164,7 +167,10 @@ export default function MonthScreen() {
 
       {summary && data && (
         <AdjustBalanceSheet
-          visible={adjusting} month={month} computedCents={computedStartCents(data.summaries, month)}
+          visible={adjusting} month={month} adjustedOn={adjustedOn}
+          computedCents={adjustedOn
+            ? computedBalanceOn(data.summaries, data.categories, data.actuals, adjustedOn)
+            : computedStartCents(data.summaries, month)}
           onClose={() => setAdjusting(false)}
           onSaved={() => { setAdjusting(false); load(); }}
         />

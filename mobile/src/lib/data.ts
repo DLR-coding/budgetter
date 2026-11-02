@@ -35,7 +35,9 @@ export async function loadBudget(from: Month, to: Month) {
     supabase.from('line_amounts').select('month').order('month').limit(1),
   ]);
   for (const r of [g, c, a, f]) if (r.error) throw r.error;
-  const adjustments: Adjustment[] = a.data!.map((x) => ({ month: toMonth(x.month), balanceCents: x.balance_cents }));
+  const adjustments: Adjustment[] = a.data!.map((x) => ({
+    month: toMonth(x.month), balanceCents: x.balance_cents, adjustedOn: x.adjusted_on,
+  }));
   const start = balanceStartMonth(from, adjustments.map((x) => x.month), f.data!.length ? toMonth(f.data![0].month) : null);
 
   const [o, l] = await Promise.all([
@@ -55,7 +57,7 @@ export async function loadBudget(from: Month, to: Month) {
     categoryId: x.category_id, month: toMonth(x.month), amountCents: x.amount_cents,
   }));
   const actuals: ActualLine[] = l.data!.map((x) => ({
-    categoryId: x.category_id, month: toMonth(x.month), amountCents: x.amount_cents, exceptional: x.exceptional,
+    categoryId: x.category_id, month: toMonth(x.month), amountCents: x.amount_cents, exceptional: x.exceptional, date: x.date,
   }));
 
   const months: Month[] = [];
@@ -180,10 +182,10 @@ export async function replaceEntryLines(entryId: string, lines: EntryLineInput[]
   if (error) throw error;
 }
 
-/** Recale le solde de départ d'un mois sur le solde bancaire réel. */
-export async function setBalanceAdjustment(month: Month, cents: number) {
+/** Recale le solde d'un mois sur le solde bancaire réel, au jour `adjustedOn` ('AAAA-MM-JJ', inclus) ou en début de mois. */
+export async function setBalanceAdjustment(month: Month, cents: number, adjustedOn: string | null = null) {
   const { error } = await supabase.from('balance_adjustments')
-    .upsert({ month: toDate(month), balance_cents: cents }, { onConflict: 'user_id,month' });
+    .upsert({ month: toDate(month), balance_cents: cents, adjusted_on: adjustedOn }, { onConflict: 'user_id,month' });
   if (error) throw error;
 }
 
