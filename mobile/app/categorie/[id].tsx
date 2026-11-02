@@ -1,14 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Fragment, useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BottomSheet, Card, CircleButton, Divider, EntryIcon, PrimaryButton, ProgressBar, ScreenHeader, SectionTitle,
 } from '../../src/components/ui';
 import { parsePriceCents } from '../../src/lib/articles';
-import { formatAmount, formatEuros, monthLabel, monthOf, plannedFor, type Month } from '../../src/lib/budget';
-import { clearPlannedOverride, loadBudget, loadCategories, loadEntries, setPlannedOverride, type EntryRow } from '../../src/lib/data';
+import { formatAmount, formatEuros, monthLabel, monthOf, plannedFor, type Category, type Month } from '../../src/lib/budget';
+import {
+  clearPlannedOverride, loadBudget, loadCategories, loadEntries, setCategoryCounted, setPlannedOverride, type EntryRow,
+} from '../../src/lib/data';
 import { dayMonth, entryKind, entryTitle, lineLabel, otherLinesNote, qtyLabel, sourceLabel } from '../../src/lib/entries';
 import { colors, font, radius } from '../../src/theme';
 
@@ -56,8 +58,15 @@ export default function CategoryScreen() {
   }
 
   const ctx = { groups: data.groups, cats: data.cats };
-  const planned = plannedFor({ id, kind: 'depense', defaultPlannedCents: cat.default_planned_cents, archived: cat.archived }, month, data.overrides);
-  const hasOverride = data.overrides.some((o) => o.categoryId === id && o.month === month);
+  const kind = data.groups.find((g) => g.id === cat.group_id)?.kind ?? 'depense';
+  const category: Category = { id, kind, defaultPlannedCents: cat.default_planned_cents, archived: cat.archived };
+  const planned = plannedFor(category, month, data.overrides);
+  const override = data.overrides.find((o) => o.categoryId === id && o.month === month);
+  const hasOverride = override?.amountCents != null;
+  // Interrupteur de la catégorie ; celui du mois (écran Mois) peut le neutraliser.
+  const catCounted = override?.counted ?? true;
+  const monthCounted = data.monthSettings.find((x) => x.month === month && x.kind === kind)?.plannedCounted ?? true;
+  const showCounted = month >= monthOf(new Date()) && kind !== 'epargne';
   const items = data.entries
     .map((e) => {
       const lines = e.entry_lines.filter((l) => l.category_id === id);
@@ -114,6 +123,24 @@ export default function CategoryScreen() {
               : <Text style={s.muted}>Reste <Text style={[s.strong, { color: colors.text }]}>{formatEuros(planned - actual)}</Text></Text>}
           </View>
         </Card>
+
+        {showCounted && (
+          <Card style={s.counted}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={s.countedTitle}>Compter le prévu en {monthName}</Text>
+              <Text style={s.muted}>
+                {!monthCounted
+                  ? `Désactivé pour tous les ${kind === 'revenu' ? 'revenus' : 'dépenses'} de ${monthName} (écran Mois) : le solde projeté ne compte que le réel (${formatEuros(actual)})`
+                  : catCounted
+                    ? `Activé : le solde projeté compte le prévu (${formatEuros(planned)})`
+                    : `Désactivé : le solde projeté ne compte que le réel (${formatEuros(actual)})`}
+              </Text>
+            </View>
+            <Switch value={catCounted} onValueChange={(on) => run(() => setCategoryCounted(id, month, on))}
+              accessibilityLabel={`Compter le prévu de ${cat.name} en ${monthName}`}
+              trackColor={{ false: colors.surface2, true: colors.accent }} thumbColor={colors.text} />
+          </Card>
+        )}
 
         {error && <Text style={s.error}>{error}</Text>}
 
@@ -203,6 +230,8 @@ const s = StyleSheet.create({
   summaryBottom: { flexDirection: 'row', justifyContent: 'space-between' },
   muted: { color: colors.textMuted, fontFamily: font.regular, fontSize: 14 },
   strong: { fontFamily: font.semibold },
+  counted: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
+  countedTitle: { color: colors.text, fontFamily: font.semibold, fontSize: 16 },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16 },
   pressed: { backgroundColor: colors.surface2 },

@@ -1,16 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { AdjustBalanceSheet } from '../../src/components/AdjustBalanceSheet';
 import { RunwayChart } from '../../src/components/RunwayChart';
 import { Card, CircleButton, Divider, ProgressBar } from '../../src/components/ui';
 import {
-  addMonths, collapseRows, computedBalanceOn, computedStartCents, formatAmount, formatEuros, groupBreakdown, monthLabel, monthName,
+  addMonths, collapseRows, computedStartCents, formatAmount, formatEuros, groupBreakdown, monthLabel, monthName,
   monthOf, runwayHeadline, splitEuros, type CategoryLine, type Month,
 } from '../../src/lib/budget';
-import { isoDate } from '../../src/lib/articles';
-import { loadBudget } from '../../src/lib/data';
+import { loadBudget, setMonthCounted } from '../../src/lib/data';
 import { colors, font, radius } from '../../src/theme';
 
 const isMonth = (m: unknown): m is Month => typeof m === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(m);
@@ -58,8 +57,16 @@ export default function MonthScreen() {
     return <View style={[s.screen, { justifyContent: 'center' }]}><ActivityIndicator color={colors.accent} /></View>;
   }
 
-  // Mois en cours : ajustement daté d'aujourd'hui (voir summarizeMonths) ; autres mois : début de mois.
-  const adjustedOn = month === current ? isoDate(new Date()) : null;
+  const counted = (kind: 'revenu' | 'depense') =>
+    data?.monthSettings.find((x) => x.month === month && x.kind === kind)?.plannedCounted ?? true;
+  const toggleCounted = async (kind: 'revenu' | 'depense', on: boolean) => {
+    try {
+      await setMonthCounted(month, kind, on);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   const headline = horizon.length ? runwayHeadline(horizon) : null;
   const hero = summary ? splitEuros(summary.endCents) : null;
 
@@ -117,6 +124,10 @@ export default function MonthScreen() {
             </View>
             <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(summary.actualIncomeCents, true)}</Text>
             <Text style={s.flowPlanned}>Prévu {formatEuros(summary.plannedIncomeCents)}</Text>
+            {summary.status !== 'passe' && (
+              <CountedSwitch value={counted('revenu')} label="Compter le prévu des revenus"
+                onChange={(on) => toggleCounted('revenu', on)} />
+            )}
           </View>
           <View style={[s.card, s.flowCard]}>
             <View style={s.flowHead}>
@@ -127,6 +138,10 @@ export default function MonthScreen() {
             </View>
             <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(-summary.actualExpenseCents)}</Text>
             <Text style={s.flowPlanned}>Prévu {formatEuros(summary.plannedExpenseCents)}</Text>
+            {summary.status !== 'passe' && (
+              <CountedSwitch value={counted('depense')} label="Compter le prévu des dépenses"
+                onChange={(on) => toggleCounted('depense', on)} />
+            )}
           </View>
         </View>
       )}
@@ -167,15 +182,23 @@ export default function MonthScreen() {
 
       {summary && data && (
         <AdjustBalanceSheet
-          visible={adjusting} month={month} adjustedOn={adjustedOn}
-          computedCents={adjustedOn
-            ? computedBalanceOn(data.summaries, data.categories, data.actuals, adjustedOn)
-            : computedStartCents(data.summaries, month)}
+          visible={adjusting} month={month}
+          computedCents={computedStartCents(data.summaries, month)}
           onClose={() => setAdjusting(false)}
           onSaved={() => { setAdjusting(false); load(); }}
         />
       )}
     </ScrollView>
+  );
+}
+
+function CountedSwitch({ value, label, onChange }: { value: boolean; label: string; onChange: (on: boolean) => void }) {
+  return (
+    <View style={s.countedRow}>
+      <Text style={s.countedText}>Compter le prévu</Text>
+      <Switch value={value} onValueChange={onChange} accessibilityLabel={label}
+        trackColor={{ false: colors.surface2, true: colors.accent }} thumbColor={colors.text} />
+    </View>
   );
 }
 
@@ -236,6 +259,11 @@ const s = StyleSheet.create({
   flowLabel: { color: colors.textSoft, fontFamily: font.regular, fontSize: 14 },
   flowAmount: { color: colors.text, fontFamily: font.semibold, fontSize: 22, letterSpacing: -0.4, marginTop: 4 },
   flowPlanned: { color: colors.textFaint, fontFamily: font.regular, fontSize: 13 },
+  countedRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 6, paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider,
+  },
+  countedText: { flex: 1, color: colors.textSoft, fontFamily: font.regular, fontSize: 14 },
 
   groupHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 4 },
   groupName: { color: colors.text, fontFamily: font.semibold, fontSize: 16 },

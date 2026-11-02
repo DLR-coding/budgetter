@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import {
   addMonths, balanceStartMonth, monthOf, summarizeMonths,
-  type ActualLine, type Adjustment, type Category, type GroupKind, type Month, type PlannedOverride,
+  type ActualLine, type Adjustment, type Category, type GroupKind, type Month, type MonthSetting, type PlannedOverride,
 } from './budget';
 import type { FormulaLine } from './formula';
 
@@ -36,15 +36,16 @@ export async function loadBudget(from: Month, to: Month) {
   ]);
   for (const r of [g, c, a, f]) if (r.error) throw r.error;
   const adjustments: Adjustment[] = a.data!.map((x) => ({
-    month: toMonth(x.month), balanceCents: x.balance_cents, adjustedOn: x.adjusted_on,
+    month: toMonth(x.month), balanceCents: x.balance_cents,
   }));
   const start = balanceStartMonth(from, adjustments.map((x) => x.month), f.data!.length ? toMonth(f.data![0].month) : null);
 
-  const [o, l] = await Promise.all([
+  const [o, l, ms] = await Promise.all([
     supabase.from('planned_overrides').select('*').gte('month', toDate(start)).lte('month', toDate(to)),
     supabase.from('line_amounts').select('*').gte('month', toDate(start)).lte('month', toDate(to)),
+    supabase.from('month_settings').select('*').gte('month', toDate(start)).lte('month', toDate(to)),
   ]);
-  for (const r of [o, l]) if (r.error) throw r.error;
+  for (const r of [o, l, ms]) if (r.error) throw r.error;
 
   const groups = g.data as GroupRow[];
   const cats = c.data as CategoryRow[];
@@ -54,19 +55,22 @@ export async function loadBudget(from: Month, to: Month) {
     id: x.id, kind: kindOf.get(x.group_id)!, defaultPlannedCents: x.default_planned_cents, archived: x.archived,
   }));
   const overrides: PlannedOverride[] = o.data!.map((x) => ({
-    categoryId: x.category_id, month: toMonth(x.month), amountCents: x.amount_cents,
+    categoryId: x.category_id, month: toMonth(x.month), amountCents: x.amount_cents, counted: x.counted,
+  }));
+  const monthSettings: MonthSetting[] = ms.data!.map((x) => ({
+    month: toMonth(x.month), kind: x.kind, plannedCounted: x.planned_counted,
   }));
   const actuals: ActualLine[] = l.data!.map((x) => ({
-    categoryId: x.category_id, month: toMonth(x.month), amountCents: x.amount_cents, exceptional: x.exceptional, date: x.date,
+    categoryId: x.category_id, month: toMonth(x.month), amountCents: x.amount_cents, exceptional: x.exceptional,
   }));
 
   const months: Month[] = [];
   for (let m = start; m <= to; m = addMonths(m, 1)) months.push(m);
 
   const summaries = summarizeMonths({
-    months, currentMonth: monthOf(new Date()), categories, overrides, actuals, adjustments,
+    months, currentMonth: monthOf(new Date()), categories, overrides, monthSettings, actuals, adjustments,
   });
-  return { groups, cats, categories, overrides, actuals, summaries };
+  return { groups, cats, categories, overrides, monthSettings, actuals, summaries };
 }
 
 /** Groupes et catégories actives, pour la saisie. `includeArchived` : aussi les archivées (affichage de l'existant). */
@@ -182,10 +186,10 @@ export async function replaceEntryLines(entryId: string, lines: EntryLineInput[]
   if (error) throw error;
 }
 
-/** Recale le solde d'un mois sur le solde bancaire réel, au jour `adjustedOn` ('AAAA-MM-JJ', inclus) ou en début de mois. */
-export async function setBalanceAdjustment(month: Month, cents: number, adjustedOn: string | null = null) {
+/** Recale le solde de départ d'un mois (début de mois) sur le solde bancaire réel. */
+export async function setBalanceAdjustment(month: Month, cents: number) {
   const { error } = await supabase.from('balance_adjustments')
-    .upsert({ month: toDate(month), balance_cents: cents, adjusted_on: adjustedOn }, { onConflict: 'user_id,month' });
+    .upsert({ month: toDate(month), balance_cents: cents }, { onConflict: 'user_id,month' });
   if (error) throw error;
 }
 
@@ -195,10 +199,24 @@ export async function setPlannedOverride(categoryId: string, month: Month, cents
   if (error) throw error;
 }
 
-/** Le mois revient au prévu par défaut de la catégorie. */
+/** Le mois revient au prévu par défaut de la catégorie (la ligne garde l'interrupteur « Compter le prévu »). */
 export async function clearPlannedOverride(categoryId: string, month: Month) {
-  const { error } = await supabase.from('planned_overrides').delete()
+  const { error } = await supabase.from('planned_overrides').update({ amount_cents: null })
     .eq('category_id', categoryId).eq('month', toDate(month));
+  if (error) throw error;
+}
+
+/** Interrupteur « Compter le prévu » d'une catégorie pour un mois (le prévu du mois ne change pas). */
+export async function setCategoryCounted(categoryId: string, month: Month, counted: boolean) {
+  const { error } = await supabase.from('planned_overrides')
+    .upsert({ category_id: categoryId, month: toDate(month), counted }, { onConflict: 'category_id,month' });
+  if (error) throw error;
+}
+
+/** Interrupteur « Compter le prévu » d'ensemble du mois, pour les revenus ou les dépenses. */
+export async function setMonthCounted(month: Month, kind: 'revenu' | 'depense', plannedCounted: boolean) {
+  const { error } = await supabase.from('month_settings')
+    .upsert({ month: toDate(month), kind, planned_counted: plannedCounted }, { onConflict: 'user_id,month,kind' });
   if (error) throw error;
 }
 
