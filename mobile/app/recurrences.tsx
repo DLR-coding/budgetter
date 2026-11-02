@@ -18,7 +18,7 @@ export default function RecurrencesScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [c, r] = await Promise.all([loadCategories(), loadRecurrences()]);
+      const [c, r] = await Promise.all([loadCategories({ includeArchived: true }), loadRecurrences()]);
       setGroups(c.groups);
       setCats(c.cats);
       setRecs(r);

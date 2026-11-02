@@ -31,7 +31,7 @@ export default function SaisiesScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [e, c, t] = await Promise.all([loadEntries(month), loadCategories(), topCategoryIds().catch(() => [] as string[])]);
+      const [e, c, t] = await Promise.all([loadEntries(month), loadCategories({ includeArchived: true }), topCategoryIds().catch(() => [] as string[])]);
       setEntries(e); setCtx(c); setTop(t); setError(null);
     } catch (e) {
       setError((e as Error).message);

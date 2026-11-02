@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategorySheet } from '../src/components/CategorySheet';
 import { formatEuros } from '../src/lib/budget';
@@ -213,18 +213,20 @@ export default function Saisie() {
       <CategorySheet visible={sheetOpen} kind={kind} groups={groups} cats={cats} selectedId={categoryId}
         onSelect={setCategoryId} onClose={() => setSheetOpen(false)} />
 
-      <Modal visible={noteOpen} transparent animationType="fade" onRequestClose={() => setNoteOpen(false)} statusBarTranslucent>
-        <Pressable style={s.backdrop} onPress={() => setNoteOpen(false)} accessibilityLabel="Fermer">
-          <Pressable style={s.noteBox}>
-            <Text style={s.cardTitle}>Note</Text>
-            <TextInput style={s.noteInput} value={merchant} onChangeText={setMerchant} autoFocus
-              placeholder="Commerçant ou note" placeholderTextColor={colors.textFaint}
-              returnKeyType="done" onSubmitEditing={() => setNoteOpen(false)} />
-            <Pressable style={s.noteOk} onPress={() => setNoteOpen(false)}>
-              <Text style={s.validateText}>OK</Text>
+      <Modal visible={noteOpen} transparent animationType="fade" onRequestClose={() => setNoteOpen(false)} statusBarTranslucent navigationBarTranslucent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          <Pressable style={s.backdrop} onPress={() => setNoteOpen(false)} accessibilityLabel="Fermer">
+            <Pressable style={s.noteBox}>
+              <Text style={s.cardTitle}>Note</Text>
+              <TextInput style={s.noteInput} value={merchant} onChangeText={setMerchant} autoFocus
+                placeholder="Commerçant ou note" placeholderTextColor={colors.textFaint}
+                returnKeyType="done" onSubmitEditing={() => setNoteOpen(false)} />
+              <Pressable style={s.noteOk} onPress={() => setNoteOpen(false)}>
+                <Text style={s.validateText}>OK</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

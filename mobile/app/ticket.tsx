@@ -21,6 +21,8 @@ export default function Ticket() {
   const insets = useSafeAreaInsets();
   const photo = useRef<string | null>(null);   // base64 du JPEG réduit
   const path = useRef<string | null>(null);    // chemin dans le bucket 'receipts', une fois envoyé
+  const left = useRef(false);                  // écran quitté (✕, retour Android, enregistrement)
+  const kept = useRef(false);                  // photo rattachée à une saisie (enregistrée ou en cours)
   const [phase, setPhase] = useState<Phase>({ step: 'photo' });
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [cats, setCats] = useState<CategoryRow[]>([]);
@@ -35,14 +37,17 @@ export default function Ticket() {
     const base64 = photo.current;
     setPhase({ step: 'loading' });
     try {
-      const upload = path.current ? Promise.resolve(path.current) : uploadReceipt(base64);
+      const upload = path.current ? Promise.resolve(path.current) : uploadReceipt(base64).then((p) => {
+        path.current = p;
+        if (left.current) drop(); // écran quitté pendant l'envoi
+        return p;
+      });
       const parse = loadCategories().then(({ groups: g, cats: c }) => {
         setGroups(g);
         setCats(c);
         return parseReceipt(base64, g, c);
       });
       const [up, parsed] = await Promise.allSettled([upload, parse]);
-      if (up.status === 'fulfilled') path.current = up.value;
       if (up.status === 'rejected') throw up.reason;
       if (parsed.status === 'rejected') throw parsed.reason;
       setReceipt(parsed.value);
@@ -66,16 +71,22 @@ export default function Ticket() {
 
   useEffect(() => { shoot(); }, []);
 
-  /** ✕ : abandon, la photo déjà envoyée est supprimée. */
-  function cancel() {
-    if (path.current) removeReceipt(path.current).catch(console.warn);
-    router.back();
+  /** Supprime la photo envoyée si aucune saisie ne la garde. */
+  function drop() {
+    if (path.current && !kept.current) removeReceipt(path.current).catch(console.warn);
   }
+
+  // Quitter sans enregistrer, par n'importe quel moyen (✕, geste ou bouton retour) : la photo est supprimée.
+  useEffect(() => {
+    left.current = false;
+    return () => { left.current = true; drop(); };
+  }, []);
 
   async function save() {
     if (!receipt || !path.current) return;
     setSaving(true);
     setSaveError(null);
+    kept.current = true; // pendant l'enregistrement, quitter l'écran ne doit pas effacer la photo
     try {
       await saveEntry({
         source: 'ticket', receiptPath: path.current, merchant: receipt.merchant ?? undefined,
@@ -83,13 +94,15 @@ export default function Ticket() {
       });
       router.dismissTo('/');
     } catch (e) {
+      kept.current = false;
+      if (left.current) drop();
       setSaving(false);
       setSaveError(`Enregistrement impossible : ${(e as Error).message}`);
     }
   }
 
   const header = (
-    <ScreenHeader title="Vérifier le ticket" left="close" onLeft={cancel}
+    <ScreenHeader title="Vérifier le ticket" left="close" onLeft={() => router.back()}
       right={phase.step === 'ready' || (phase.step === 'error' && photo.current)
         ? <CircleButton icon="refresh" onPress={analyse} accessibilityLabel="Relancer l’analyse" />
         : undefined} />

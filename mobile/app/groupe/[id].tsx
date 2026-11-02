@@ -5,7 +5,6 @@ import { CategoryEditSheet } from '../../src/components/CategoryEditSheet';
 import { Card, CircleButton, Divider, ListRow, ScreenHeader, SectionTitle } from '../../src/components/ui';
 import { formatEuros } from '../../src/lib/budget';
 import { loadCategories, type CategoryRow, type GroupRow } from '../../src/lib/data';
-import { supabase } from '../../src/lib/supabase';
 import { colors, font } from '../../src/theme';
 
 // Catégories d'un groupe (actives puis archivées) ; appui → modifier, archiver ou désarchiver.
@@ -19,14 +18,9 @@ export default function GroupScreen() {
 
   const load = useCallback(async () => {
     try {
-      // shortcut: requête directe, loadCategories ne renvoie pas les archivées ; à déplacer dans data.ts.
-      const [c, all] = await Promise.all([
-        loadCategories(),
-        supabase.from('categories').select('*').eq('group_id', id).order('position'),
-      ]);
-      if (all.error) throw all.error;
+      const c = await loadCategories({ includeArchived: true });
       setGroups(c.groups);
-      setCats(all.data as CategoryRow[]);
+      setCats(c.cats.filter((x) => x.group_id === id));
       setError(null);
     } catch (e) {
       setError((e as Error).message);

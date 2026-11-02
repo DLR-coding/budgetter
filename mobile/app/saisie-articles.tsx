@@ -5,26 +5,29 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleShee
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategorySheet } from '../src/components/CategorySheet';
 import { dayLabel, isoDate, parsePriceCents, subtotalsByCategory } from '../src/lib/articles';
-import { formatEuros } from '../src/lib/budget';
-import { loadCategories, saveEntry, type CategoryRow, type GroupRow } from '../src/lib/data';
+import { formatEuros, tintFor, type GroupKind } from '../src/lib/budget';
+import {
+  loadCategories, loadEntry, replaceEntryLines, saveEntry, updateEntry, type CategoryRow, type GroupRow,
+} from '../src/lib/data';
 import { parseFormula } from '../src/lib/formula';
 import { colors, font, radius } from '../src/theme';
 
-type Params = { kind?: string; date?: string; merchant?: string; exceptional?: string; categoryId?: string; amount?: string };
+type Params = { entryId?: string; kind?: string; date?: string; merchant?: string; exceptional?: string; categoryId?: string; amount?: string };
 type Item = { key: number; label: string; quantity: number; unitPriceCents: number; categoryId: string };
 
-// Teintes des pastilles, attribuées par rang du groupe.
-const TINTS = [
-  { color: colors.accentText, backgroundColor: colors.accentTint },
-  { color: colors.income, backgroundColor: colors.incomeBg },
-  { color: colors.warn, backgroundColor: colors.warnBg },
-];
+// Teintes des pastilles, selon tintFor du groupe.
+const TINTS = {
+  accent: { color: colors.accentText, backgroundColor: colors.accentTint },
+  income: { color: colors.income, backgroundColor: colors.incomeBg },
+};
 
 export default function SaisieArticles() {
   const p = useLocalSearchParams<Params>();
   const insets = useSafeAreaInsets();
-  const kind = p.kind === 'revenu' ? 'revenu' : 'depense';
-  const date = p.date ?? isoDate(new Date());
+  const editId = p.entryId; // présent : on modifie les articles d'une saisie existante
+  const [kind, setKind] = useState<GroupKind>(p.kind === 'revenu' ? 'revenu' : 'depense');
+  const [date, setDate] = useState(p.date ?? isoDate(new Date()));
+  const [exceptional, setExceptional] = useState(p.exceptional === '1');
   const nextKey = useRef(0);
 
   const [merchant, setMerchant] = useState(p.merchant ?? '');
@@ -46,13 +49,29 @@ export default function SaisieArticles() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadCategories().then(({ groups, cats }) => { setGroups(groups); setCats(cats); }).catch((e) => setError(e.message));
-  }, []);
+    // Archivées incluses pour nommer les lignes existantes ; CategorySheet ne propose que les actives.
+    Promise.all([loadCategories({ includeArchived: true }), editId ? loadEntry(editId) : null])
+      .then(([{ groups, cats }, e]) => {
+        setGroups(groups); setCats(cats);
+        if (!e) return;
+        const first = cats.find((c) => c.id === e.entry_lines[0]?.category_id);
+        setKind(groups.find((g) => g.id === first?.group_id)?.kind ?? 'depense');
+        setMerchant(e.merchant ?? '');
+        setDate(e.date);
+        setExceptional(e.exceptional);
+        setCategoryId(e.entry_lines[0]?.category_id ?? '');
+        setItems(e.entry_lines.map((l) => ({
+          key: nextKey.current++, label: l.label ?? l.raw_label ?? '', quantity: l.quantity,
+          unitPriceCents: l.unit_price_cents, categoryId: l.category_id,
+        })));
+      })
+      .catch((e: Error) => setError(e.message));
+  }, [editId]);
 
   const catName = (id: string) => cats.find((c) => c.id === id)?.name ?? 'Choisir';
   const tint = (id: string) => {
-    const g = groups.findIndex((x) => x.id === cats.find((c) => c.id === id)?.group_id);
-    return TINTS[Math.max(g, 0) % TINTS.length];
+    const g = groups.find((x) => x.id === cats.find((c) => c.id === id)?.group_id);
+    return TINTS[g ? tintFor(g) : 'accent'];
   };
 
   const priceCents = parsePriceCents(price);
@@ -73,9 +92,15 @@ export default function SaisieArticles() {
     setSaving(true);
     setError(null);
     try {
+      const lines = items.map((i) => ({ quantity: i.quantity, unitPriceCents: i.unitPriceCents, categoryId: i.categoryId, label: i.label || undefined }));
+      if (editId) {
+        await updateEntry(editId, { merchant: merchant.trim() || null, exceptional: kind === 'depense' && exceptional });
+        await replaceEntryLines(editId, lines);
+        router.back();
+        return;
+      }
       await saveEntry({
-        date, merchant: merchant.trim() || undefined, exceptional: kind === 'depense' && p.exceptional === '1', source: 'manuel',
-        lines: items.map((i) => ({ quantity: i.quantity, unitPriceCents: i.unitPriceCents, categoryId: i.categoryId, label: i.label || undefined })),
+        date, merchant: merchant.trim() || undefined, exceptional: kind === 'depense' && exceptional, source: 'manuel', lines,
       });
       // Ferme aussi la saisie rapide restée dessous.
       router.dismissTo('/');
@@ -94,7 +119,7 @@ export default function SaisieArticles() {
             <Ionicons name="chevron-back" size={20} color={colors.text} />
           </Pressable>
           <View style={s.headerText}>
-            <Text style={s.title} numberOfLines={1}>{merchant.trim() || 'Plusieurs articles'}</Text>
+            <Text style={s.title} numberOfLines={1}>{editId ? 'Modifier les articles' : merchant.trim() || 'Plusieurs articles'}</Text>
             <Text style={s.subtitle}>{dayLabel(date)} · {n} article{n > 1 ? 's' : ''}</Text>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Modifier le commerçant" style={s.circle} onPress={() => setEditingMerchant(true)}>
@@ -173,17 +198,20 @@ export default function SaisieArticles() {
       <CategorySheet visible={sheetOpen} kind={kind} groups={groups} cats={cats} selectedId={categoryId || null}
         onSelect={setCategoryId} onClose={() => setSheetOpen(false)} />
 
-      <Modal visible={editingMerchant} transparent animationType="fade" onRequestClose={() => setEditingMerchant(false)}>
-        <Pressable style={s.backdrop} accessibilityLabel="Fermer" onPress={() => setEditingMerchant(false)}>
-          <Pressable style={s.dialog}>
-            <Text style={s.dialogTitle}>Commerçant</Text>
-            <TextInput style={s.input} value={merchant} onChangeText={setMerchant} placeholder="Ex. Auchan"
-              placeholderTextColor={colors.textFaint} autoFocus onSubmitEditing={() => setEditingMerchant(false)} />
-            <Pressable style={[s.addBtn, { alignSelf: 'flex-end' }]} onPress={() => setEditingMerchant(false)} accessibilityRole="button">
-              <Text style={s.addText}>OK</Text>
+      <Modal visible={editingMerchant} transparent animationType="fade" onRequestClose={() => setEditingMerchant(false)}
+        statusBarTranslucent navigationBarTranslucent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          <Pressable style={s.backdrop} accessibilityLabel="Fermer" onPress={() => setEditingMerchant(false)}>
+            <Pressable style={s.dialog}>
+              <Text style={s.dialogTitle}>Commerçant</Text>
+              <TextInput style={s.input} value={merchant} onChangeText={setMerchant} placeholder="Ex. Auchan"
+                placeholderTextColor={colors.textFaint} autoFocus onSubmitEditing={() => setEditingMerchant(false)} />
+              <Pressable style={[s.addBtn, { alignSelf: 'flex-end' }]} onPress={() => setEditingMerchant(false)} accessibilityRole="button">
+                <Text style={s.addText}>OK</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </KeyboardAvoidingView>
   );

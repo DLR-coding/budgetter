@@ -30,7 +30,7 @@ export function CategorySheet({ visible, kind, groups, cats, selectedId, onSelec
           {shown.map((g) => (
             <View key={g.id} style={{ gap: 6 }}>
               <Text style={s.group}>{g.name}</Text>
-              {cats.filter((c) => c.group_id === g.id).map((c) => {
+              {cats.filter((c) => c.group_id === g.id && !c.archived).map((c) => {
                 const selected = c.id === selectedId;
                 return (
                   <Pressable key={c.id} style={[s.row, selected && s.rowSelected]}

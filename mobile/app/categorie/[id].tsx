@@ -8,7 +8,7 @@ import {
 } from '../../src/components/ui';
 import { parsePriceCents } from '../../src/lib/articles';
 import { formatAmount, formatEuros, monthLabel, monthOf, plannedFor, type Month } from '../../src/lib/budget';
-import { clearPlannedOverride, loadBudget, loadEntries, setPlannedOverride, type EntryRow } from '../../src/lib/data';
+import { clearPlannedOverride, loadBudget, loadCategories, loadEntries, setPlannedOverride, type EntryRow } from '../../src/lib/data';
 import { dayMonth, entryKind, entryTitle, lineLabel, otherLinesNote, qtyLabel, sourceLabel } from '../../src/lib/entries';
 import { colors, font, radius } from '../../src/theme';
 
@@ -28,8 +28,11 @@ export default function CategoryScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [b, entries] = await Promise.all([loadBudget(month, month), loadEntries(month)]);
-      setData({ ...b, entries });
+      const [b, entries, all] = await Promise.all([
+        loadBudget(month, month), loadEntries(month), loadCategories({ includeArchived: true }),
+      ]);
+      // Les archivées aussi : une catégorie archivée reste consultable, et ses saisies passées gardent leur nom.
+      setData({ ...b, cats: all.cats, entries });
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -46,14 +49,14 @@ export default function CategoryScreen() {
     return (
       <View style={s.screen}>
         <ScreenHeader title="Catégorie" left="back" />
-        {error || data ? <Text style={s.error}>{error ?? 'Catégorie introuvable (archivée ?).'}</Text>
+        {error || data ? <Text style={s.error}>{error ?? 'Catégorie introuvable.'}</Text>
           : <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />}
       </View>
     );
   }
 
   const ctx = { groups: data.groups, cats: data.cats };
-  const planned = plannedFor(data.categories.find((c) => c.id === id)!, month, data.overrides);
+  const planned = plannedFor({ id, kind: 'depense', defaultPlannedCents: cat.default_planned_cents }, month, data.overrides);
   const hasOverride = data.overrides.some((o) => o.categoryId === id && o.month === month);
   const items = data.entries
     .map((e) => {

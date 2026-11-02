@@ -2,7 +2,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GroupKind } from '../lib/budget';
 import type { EntryRow } from '../lib/data';
@@ -150,25 +150,28 @@ export function Banner({ tone, icon, text, trailing }: { tone: 'ok' | 'warn'; ic
   return (
     <View style={[s.banner, { backgroundColor: c.bg }]}>
       {icon && <Ionicons name={icon} size={18} color={c.fg} />}
-      <Text style={s.bannerText}>{text}</Text>
+      <Text style={[s.bannerText, { color: c.fg }]}>{text}</Text>
       {trailing}
     </View>
   );
 }
 
-/** Panneau du bas (même rendu que CategorySheet) : fond assombri, poignée, marge basse de sécurité. */
+/** Panneau du bas (même rendu que CategorySheet) : fond assombri, poignée, marge basse de sécurité.
+ * La fenêtre d'un Modal Android bord à bord n'est pas redimensionnée par le clavier : le panneau remonte par padding. */
 export function BottomSheet({ visible, onClose, title, children }: {
   visible: boolean; onClose: () => void; title?: string; children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <Pressable style={s.backdrop} accessibilityLabel="Fermer" onPress={onClose} />
-      <View style={[s.sheet, { paddingBottom: insets.bottom + 16 }]}>
-        <View style={s.handle} />
-        {title ? <Text style={s.sheetTitle}>{title}</Text> : null}
-        {children}
-      </View>
+      <KeyboardAvoidingView style={s.avoid} behavior="padding">
+        <Pressable style={s.backdrop} accessibilityLabel="Fermer" onPress={onClose} />
+        <View style={[s.sheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={s.handle} />
+          {title ? <Text style={s.sheetTitle}>{title}</Text> : null}
+          {children}
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -218,6 +221,7 @@ const s = StyleSheet.create({
   banner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: radius.card },
   bannerText: { flex: 1, color: colors.textSoft, fontFamily: font.regular, fontSize: 14 },
 
+  avoid: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
   sheet: {
     maxHeight: '85%', backgroundColor: colors.surface, borderTopLeftRadius: radius.card, borderTopRightRadius: radius.card,

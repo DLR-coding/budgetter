@@ -55,11 +55,12 @@ export async function loadBudget(from: Month, to: Month) {
   return { groups, cats, categories, overrides, actuals, summaries };
 }
 
-/** Groupes et catégories actives, pour la saisie. */
-export async function loadCategories() {
+/** Groupes et catégories actives, pour la saisie. `includeArchived` : aussi les archivées (affichage de l'existant). */
+export async function loadCategories({ includeArchived = false } = {}) {
+  const cq = supabase.from('categories').select('*');
   const [g, c] = await Promise.all([
     supabase.from('groups').select('*').order('position'),
-    supabase.from('categories').select('*').eq('archived', false).order('position'),
+    (includeArchived ? cq : cq.eq('archived', false)).order('position'),
   ]);
   if (g.error) throw g.error;
   if (c.error) throw c.error;

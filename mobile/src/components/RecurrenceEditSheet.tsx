@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { formatAmount } from '../lib/budget';
+import { formatAmount, type GroupKind } from '../lib/budget';
 import { saveRecurrence, type CategoryRow, type GroupRow, type RecurrenceRow } from '../lib/data';
 import { clampDay, dayLabel, parsePlannedCents } from '../lib/settings';
 import { colors, font, radius } from '../theme';
@@ -24,6 +24,7 @@ export function RecurrenceEditSheet({ visible, groups, cats, recurrence, onClose
   const [day, setDay] = useState(1);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [active, setActive] = useState(true);
+  const [kind, setKind] = useState<GroupKind>('depense');
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,11 +36,17 @@ export function RecurrenceEditSheet({ visible, groups, cats, recurrence, onClose
     setDay(recurrence?.day_of_month ?? 1);
     setCategoryId(recurrence?.category_id ?? null);
     setActive(recurrence?.active ?? true);
+    const cat = cats.find((c) => c.id === recurrence?.category_id);
+    setKind(groups.find((g) => g.id === cat?.group_id)?.kind ?? 'depense');
     setError(null);
-  }, [visible, recurrence]);
+  }, [visible, recurrence, cats, groups]);
 
   const category = cats.find((c) => c.id === categoryId);
-  const kind = groups.find((g) => g.id === category?.group_id)?.kind ?? 'depense';
+  const switchKind = (k: GroupKind) => {
+    if (k === kind) return;
+    setKind(k);
+    setCategoryId(null); // la catégorie choisie appartient à l'autre type
+  };
 
   const save = async () => {
     const cents = parsePlannedCents(amount);
@@ -61,6 +68,15 @@ export function RecurrenceEditSheet({ visible, groups, cats, recurrence, onClose
   return (
     <BottomSheet visible={visible} onClose={onClose} title={recurrence ? 'Modifier la charge' : 'Nouvelle charge récurrente'}>
       <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
+        <View style={s.segment}>
+          {(['depense', 'revenu'] as const).map((k) => (
+            <Pressable key={k} onPress={() => switchKind(k)} style={[s.segItem, kind === k && s.segActive]}
+              accessibilityRole="button" accessibilityState={{ selected: kind === k }}>
+              <Text style={[s.segText, kind === k && s.segTextActive]}>{k === 'depense' ? 'Dépense' : 'Revenu'}</Text>
+            </Pressable>
+          ))}
+        </View>
+
         <Text style={s.label}>Libellé</Text>
         <TextInput style={s.input} value={label} onChangeText={setLabel} placeholder="Ex. Loyer"
           placeholderTextColor={colors.textFaint} autoFocus={!recurrence} />
@@ -104,6 +120,15 @@ export function RecurrenceEditSheet({ visible, groups, cats, recurrence, onClose
 
 const s = StyleSheet.create({
   body: { gap: 10, paddingBottom: 4 },
+  // Bascule Dépense / Revenu, même rendu que la saisie rapide.
+  segment: {
+    flexDirection: 'row', alignSelf: 'flex-start', padding: 4, borderRadius: radius.pill, borderWidth: 1,
+    borderColor: colors.border, backgroundColor: colors.surface2,
+  },
+  segItem: { height: 36, paddingHorizontal: 16, borderRadius: radius.pill, justifyContent: 'center' },
+  segActive: { backgroundColor: colors.text },
+  segText: { color: colors.textMuted, fontFamily: font.medium, fontSize: 15 },
+  segTextActive: { color: colors.bg, fontFamily: font.semibold },
   label: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13, marginTop: 4 },
   input: {
     height: 50, borderRadius: radius.key, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface2,

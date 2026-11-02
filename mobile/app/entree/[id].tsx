@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { router, useLocalSearchParams } from 'expo-router';
-import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Fragment, useCallback, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
+  ActivityIndicator, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -34,11 +34,12 @@ export default function EntryScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    Promise.all([loadEntry(id), loadCategories()])
+  // Au retour de « Modifier les articles », la saisie est relue.
+  useFocusEffect(useCallback(() => {
+    Promise.all([loadEntry(id), loadCategories({ includeArchived: true })])
       .then(([e, c]) => { setEntry(e); setDraft(draftOf(e)); setCtx(c); })
       .catch((e: Error) => setError(e.message));
-  }, [id]);
+  }, [id]));
 
   if (!entry || !draft) {
     return (
@@ -192,16 +193,18 @@ export default function EntryScreen() {
         </View>
       </BottomSheet>
 
-      <Modal visible={editing !== null} transparent animationType="fade" onRequestClose={closeEdit} statusBarTranslucent>
-        <Pressable style={s.backdrop} onPress={closeEdit} accessibilityLabel="Fermer">
-          <Pressable style={s.editBox}>
-            <Text style={s.editTitle}>{editing === 'merchant' ? 'Commerçant' : 'Note'}</Text>
-            <TextInput style={s.editInput} value={text} onChangeText={setText} autoFocus
-              placeholder={editing === 'merchant' ? 'Auchan, Lidl…' : 'Une précision'} placeholderTextColor={colors.textFaint}
-              returnKeyType="done" onSubmitEditing={closeEdit} />
-            <PrimaryButton label="OK" onPress={closeEdit} />
+      <Modal visible={editing !== null} transparent animationType="fade" onRequestClose={closeEdit} statusBarTranslucent navigationBarTranslucent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          <Pressable style={s.backdrop} onPress={closeEdit} accessibilityLabel="Fermer">
+            <Pressable style={s.editBox}>
+              <Text style={s.editTitle}>{editing === 'merchant' ? 'Commerçant' : 'Note'}</Text>
+              <TextInput style={s.editInput} value={text} onChangeText={setText} autoFocus
+                placeholder={editing === 'merchant' ? 'Auchan, Lidl…' : 'Une précision'} placeholderTextColor={colors.textFaint}
+                returnKeyType="done" onSubmitEditing={closeEdit} />
+              <PrimaryButton label="OK" onPress={closeEdit} />
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={photoUrl !== null} animationType="fade" onRequestClose={() => setPhotoUrl(null)} statusBarTranslucent>
