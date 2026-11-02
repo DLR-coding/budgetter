@@ -114,3 +114,40 @@ export const formatEuros = (cents: number, withSign = false) => {
   if (cents < 0) return `−${s}`;
   return withSign && cents > 0 ? `+${s}` : s;
 };
+
+const amountFormat = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Montant sans « € » (listes de lignes) : « 1 100,00 », « −781,26 », « +0,00 » si withSign. */
+export const formatAmount = (cents: number, withSign = false) => {
+  const s = amountFormat.format(Math.abs(cents) / 100);
+  if (cents < 0) return `−${s}`;
+  return withSign ? `+${s}` : s;
+};
+
+/** Pour l'affichage en gros : « 1 842 » + « ,17 € ». */
+export const splitEuros = (cents: number) => {
+  const s = formatEuros(cents);
+  const i = s.lastIndexOf(',');
+  return { units: s.slice(0, i), rest: s.slice(i) };
+};
+
+const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+/** « Novembre 2026 », ou « Novembre » sans l'année. */
+export const monthLabel = (month: Month, withYear = true) => {
+  const name = MONTHS[Number(month.slice(5, 7)) - 1];
+  return withYear ? `${name} ${month.slice(0, 4)}` : name;
+};
+
+/** Texte saisi (« -12,4 », « 1 523.43 € ») → centimes, ou null si illisible. */
+export function parseSignedCents(text: string): number | null {
+  const m = /^([+\-−])?(\d+)(?:[.,](\d{0,2}))?$/.exec(text.replace(/[\s€]/g, ''));
+  if (!m) return null;
+  const cents = Number(m[2]) * 100 + Number((m[3] ?? '').padEnd(2, '0'));
+  return m[1] === '-' || m[1] === '−' ? -cents || 0 : cents; // || 0 : pas de « −0 »
+}
+
+/** Teinte d'une pastille de catégorie : revenus en vert, groupes de dépense en alternance bleu / vert. */
+export const tintFor = (group: { kind: GroupKind; position: number }): 'accent' | 'income' =>
+  group.kind === 'revenu' || group.position % 2 === 1 ? 'income' : 'accent';

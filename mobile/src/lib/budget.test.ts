@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { addMonths, monthOf, plannedFor, summarizeMonths, runway, formatEuros } from './budget.ts';
+import { addMonths, monthOf, plannedFor, summarizeMonths, runway, formatEuros,
+  formatAmount, splitEuros, monthLabel, parseSignedCents, tintFor } from './budget.ts';
 import type { Category, MonthSummary } from './budget.ts';
 
 describe('addMonths', () => {
@@ -114,6 +115,55 @@ describe('runway', () => {
   test('négatif dès le mois en cours', () => {
     const neg = s('2026-02', 'en_cours', -1);
     assert.deepEqual(runway([neg, s('2026-03', 'futur', 10)]), { lastOkMonth: null, firstNegative: neg });
+  });
+});
+
+// fr-FR : espace fine insécable (U+202F) pour les milliers, insécable (U+00A0) avant €.
+describe('formatAmount', () => {
+  test('sans €, signe moins typographique, + forcé si withSign', () => {
+    assert.equal(formatAmount(110000), '1 100,00');
+    assert.equal(formatAmount(-78126), '−781,26');
+    assert.equal(formatAmount(78126, true), '+781,26');
+    assert.equal(formatAmount(0, true), '+0,00');
+    assert.equal(formatAmount(0), '0,00');
+  });
+});
+
+describe('splitEuros', () => {
+  test('partie entière / centimes et €', () => {
+    assert.deepEqual(splitEuros(184217), { units: '1 842', rest: ',17 €' });
+    assert.deepEqual(splitEuros(-50161), { units: '−501', rest: ',61 €' });
+  });
+});
+
+describe('monthLabel', () => {
+  test('avec et sans année', () => {
+    assert.equal(monthLabel('2026-11'), 'Novembre 2026');
+    assert.equal(monthLabel('2027-02', false), 'Février');
+  });
+});
+
+describe('parseSignedCents', () => {
+  test('virgule, point, espaces, €, signe', () => {
+    assert.equal(parseSignedCents('1 523,43 €'), 152343);
+    assert.equal(parseSignedCents(' 1 523.4 '), 152340);
+    assert.equal(parseSignedCents('-12,5'), -1250);
+    assert.equal(parseSignedCents('−0,07'), -7);
+    assert.equal(parseSignedCents('+8'), 800);
+    assert.equal(parseSignedCents('12,'), 1200);
+    assert.equal(parseSignedCents('-0'), 0);
+  });
+  test('refuse le reste', () => {
+    for (const t of ['', '-', 'abc', '1,234', '1.2.3', ',5', '12-']) assert.equal(parseSignedCents(t), null, t);
+  });
+});
+
+describe('tintFor', () => {
+  test('revenu en vert, dépenses en alternance selon la position', () => {
+    assert.equal(tintFor({ kind: 'revenu', position: 0 }), 'income');
+    assert.equal(tintFor({ kind: 'depense', position: 2 }), 'accent');
+    assert.equal(tintFor({ kind: 'depense', position: 3 }), 'income');
+    assert.equal(tintFor({ kind: 'epargne', position: 4 }), 'accent');
   });
 });
 

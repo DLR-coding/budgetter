@@ -40,6 +40,12 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="saisie" options={{ presentation: 'modal' }} />
           <Stack.Screen name="saisie-articles" />
+          <Stack.Screen name="categorie/[id]" />
+          <Stack.Screen name="entree/[id]" />
+          <Stack.Screen name="projection" />
+          <Stack.Screen name="groupe/[id]" />
+          <Stack.Screen name="recurrences" />
+          <Stack.Screen name="ticket" options={{ presentation: 'modal' }} />
         </Stack>
       ) : (
         <Login />
