@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import {
-  addMonths, monthOf, summarizeMonths,
+  addMonths, balanceStartMonth, monthOf, summarizeMonths,
   type ActualLine, type Adjustment, type Category, type GroupKind, type Month, type PlannedOverride,
 } from './budget';
 import type { FormulaLine } from './formula';
@@ -16,27 +16,40 @@ const toDate = (m: Month) => `${m}-01`;
 
 /** Au premier lancement : crée les catégories de l'Excel, puis les charges récurrentes du mois. */
 export async function bootstrap() {
-  await supabase.rpc('seed_default_categories');
-  await supabase.rpc('generate_recurrences');
+  const { error } = await supabase.rpc('seed_default_categories');
+  if (error) throw error;
+  const { error: e2 } = await supabase.rpc('generate_recurrences');
+  if (e2) throw e2;
 }
 
-/** Tout ce qu'il faut pour l'écran Mois et la projection, de `from` à `to` inclus. */
+/**
+ * Tout ce qu'il faut pour l'écran Mois et la projection, de `from` à `to` inclus.
+ * Le calcul démarre plus tôt (voir balanceStartMonth) : `summaries` peut commencer avant `from`.
+ * `cats` contient aussi les archivées : leur réel compte toujours, leur prévu vaut 0.
+ */
 export async function loadBudget(from: Month, to: Month) {
-  const [g, c, o, l, a] = await Promise.all([
+  const [g, c, a, f] = await Promise.all([
     supabase.from('groups').select('*').order('position'),
-    supabase.from('categories').select('*').eq('archived', false).order('position'),
-    supabase.from('planned_overrides').select('*').gte('month', toDate(from)).lte('month', toDate(to)),
-    supabase.from('line_amounts').select('*').gte('month', toDate(from)).lte('month', toDate(to)),
+    supabase.from('categories').select('*').order('position'),
     supabase.from('balance_adjustments').select('*').lte('month', toDate(to)).order('month'),
+    supabase.from('line_amounts').select('month').order('month').limit(1),
   ]);
-  for (const r of [g, c, o, l, a]) if (r.error) throw r.error;
+  for (const r of [g, c, a, f]) if (r.error) throw r.error;
+  const adjustments: Adjustment[] = a.data!.map((x) => ({ month: toMonth(x.month), balanceCents: x.balance_cents }));
+  const start = balanceStartMonth(from, adjustments.map((x) => x.month), f.data!.length ? toMonth(f.data![0].month) : null);
+
+  const [o, l] = await Promise.all([
+    supabase.from('planned_overrides').select('*').gte('month', toDate(start)).lte('month', toDate(to)),
+    supabase.from('line_amounts').select('*').gte('month', toDate(start)).lte('month', toDate(to)),
+  ]);
+  for (const r of [o, l]) if (r.error) throw r.error;
 
   const groups = g.data as GroupRow[];
   const cats = c.data as CategoryRow[];
   const kindOf = new Map(groups.map((x) => [x.id, x.kind]));
 
   const categories: Category[] = cats.map((x) => ({
-    id: x.id, kind: kindOf.get(x.group_id)!, defaultPlannedCents: x.default_planned_cents,
+    id: x.id, kind: kindOf.get(x.group_id)!, defaultPlannedCents: x.default_planned_cents, archived: x.archived,
   }));
   const overrides: PlannedOverride[] = o.data!.map((x) => ({
     categoryId: x.category_id, month: toMonth(x.month), amountCents: x.amount_cents,
@@ -44,10 +57,9 @@ export async function loadBudget(from: Month, to: Month) {
   const actuals: ActualLine[] = l.data!.map((x) => ({
     categoryId: x.category_id, month: toMonth(x.month), amountCents: x.amount_cents, exceptional: x.exceptional,
   }));
-  const adjustments: Adjustment[] = a.data!.map((x) => ({ month: toMonth(x.month), balanceCents: x.balance_cents }));
 
   const months: Month[] = [];
-  for (let m = from; m <= to; m = addMonths(m, 1)) months.push(m);
+  for (let m = start; m <= to; m = addMonths(m, 1)) months.push(m);
 
   const summaries = summarizeMonths({
     months, currentMonth: monthOf(new Date()), categories, overrides, actuals, adjustments,
@@ -139,7 +151,7 @@ export async function loadEntry(id: string): Promise<EntryRow> {
 }
 
 export async function updateEntry(
-  id: string, patch: { merchant?: string | null; date?: string; note?: string | null; exceptional?: boolean },
+  id: string, patch: { merchant?: string | null; date?: string; note?: string | null; exceptional?: boolean; formula?: null },
 ) {
   const { error } = await supabase.from('entries').update(patch).eq('id', id);
   if (error) throw error;
@@ -150,25 +162,22 @@ export async function deleteEntry(id: string, receiptPath?: string | null) {
   const { error } = await supabase.from('entries').delete().eq('id', id);
   if (error) throw error;
   if (receiptPath) {
+    // La saisie est déjà supprimée : une photo restée orpheline ne doit pas faire croire à un échec.
     const { error: e2 } = await supabase.storage.from('receipts').remove([receiptPath]);
-    if (e2) throw e2;
+    if (e2) console.warn('Photo du ticket non supprimée', receiptPath, e2.message);
   }
 }
 
-/** Remplace les lignes d'une saisie : les nouvelles sont insérées avant d'effacer les anciennes (jamais de perte). */
+/** Remplace les lignes d'une saisie en une seule transaction (fonction replace_entry_lines, migration 0004). */
 export async function replaceEntryLines(entryId: string, lines: EntryLineInput[]) {
-  const { data: old, error: e1 } = await supabase.from('entry_lines').select('id').eq('entry_id', entryId);
-  if (e1) throw e1;
-  const { error: e2 } = await supabase.from('entry_lines').insert(
-    lines.map((l, i) => ({
-      entry_id: entryId, category_id: l.categoryId, label: l.label ?? null, raw_label: l.rawLabel ?? null,
+  const { error } = await supabase.rpc('replace_entry_lines', {
+    p_entry_id: entryId,
+    p_lines: lines.map((l, i) => ({
+      category_id: l.categoryId, label: l.label ?? null, raw_label: l.rawLabel ?? null,
       quantity: l.quantity, unit_price_cents: l.unitPriceCents, position: i,
     })),
-  );
-  if (e2) throw e2;
-  if (old.length === 0) return;
-  const { error: e3 } = await supabase.from('entry_lines').delete().in('id', old.map((x) => x.id));
-  if (e3) throw e3;
+  });
+  if (error) throw error;
 }
 
 /** Recale le solde de départ d'un mois sur le solde bancaire réel. */
@@ -228,6 +237,7 @@ export async function saveRecurrence(r: {
   const row = {
     category_id: r.categoryId, label: r.label, amount_cents: r.amountCents, day_of_month: r.dayOfMonth, active: r.active,
   };
+  if (r.id && r.active) await skipMissedMonths(r.id);
   const { error } = r.id
     ? await supabase.from('recurrences').update(row).eq('id', r.id)
     : await supabase.from('recurrences').insert(row);
@@ -236,7 +246,19 @@ export async function saveRecurrence(r: {
   if (e2) throw e2;
 }
 
+/**
+ * Avant de réactiver une récurrence en pause : les mois de pause ne sont pas rattrapés,
+ * la génération reprend au mois courant. Sans effet si elle est déjà active ou à jour.
+ */
+async function skipMissedMonths(id: string) {
+  const previous = toDate(addMonths(monthOf(new Date()), -1));
+  const { error } = await supabase.from('recurrences').update({ last_generated_month: previous })
+    .eq('id', id).eq('active', false).lt('last_generated_month', previous);
+  if (error) throw error;
+}
+
 export async function setRecurrenceActive(id: string, active: boolean) {
+  if (active) await skipMissedMonths(id);
   const { error } = await supabase.from('recurrences').update({ active }).eq('id', id);
   if (error) throw error;
 }

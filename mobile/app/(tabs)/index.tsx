@@ -18,7 +18,7 @@ const isFixedGroup = (name: string) => /^fixe/i.test(name.trim());
 
 export default function MonthScreen() {
   const current = monthOf(new Date());
-  const params = useLocalSearchParams<{ month?: string }>();
+  const params = useLocalSearchParams<{ month?: string; at?: string }>();
   const [month, setMonth] = useState<Month>(isMonth(params.month) ? params.month : current);
   const [data, setData] = useState<Awaited<ReturnType<typeof loadBudget>> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +26,8 @@ export default function MonthScreen() {
   const [adjusting, setAdjusting] = useState(false);
   const [expanded, setExpanded] = useState<string[]>([]);
 
-  useEffect(() => { if (isMonth(params.month)) setMonth(params.month); }, [params.month]);
+  // `at` change à chaque appui depuis Projection : recentre même si le mois demandé est le même qu'avant.
+  useEffect(() => { if (isMonth(params.month)) setMonth(params.month); }, [params.month, params.at]);
 
   // 12 mois avant le plus ancien (soldes) jusqu'à 6 mois après le plus récent (projection).
   const from = addMonths(month < current ? month : current, -12);

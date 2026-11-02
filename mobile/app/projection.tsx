@@ -56,7 +56,7 @@ export default function ProjectionScreen() {
                 <Fragment key={r.month}>
                   <Divider />
                   <Pressable accessibilityRole="button"
-                    onPress={() => router.navigate({ pathname: '/', params: { month: r.month } })}
+                    onPress={() => router.navigate({ pathname: '/', params: { month: r.month, at: String(Date.now()) } })}
                     style={({ pressed }) => [s.row, pressed && s.pressed]}>
                     <View style={{ flex: 1, gap: 3 }}>
                       <View style={s.nameLine}>

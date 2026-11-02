@@ -56,7 +56,7 @@ export default function CategoryScreen() {
   }
 
   const ctx = { groups: data.groups, cats: data.cats };
-  const planned = plannedFor({ id, kind: 'depense', defaultPlannedCents: cat.default_planned_cents }, month, data.overrides);
+  const planned = plannedFor({ id, kind: 'depense', defaultPlannedCents: cat.default_planned_cents, archived: cat.archived }, month, data.overrides);
   const hasOverride = data.overrides.some((o) => o.categoryId === id && o.month === month);
   const items = data.entries
     .map((e) => {

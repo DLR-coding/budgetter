@@ -44,18 +44,29 @@ const isDate = (s: unknown): s is string => {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s; // rejette 2026-02-30
 };
 
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const toInt = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null);
 
+// Toute erreur imprévue devient une réponse JSON 500 lisible par l'appli.
 Deno.serve(async (req) => {
+  try {
+    return await handle(req);
+  } catch (e) {
+    return fail(500, 'Erreur interne de lecture du ticket', (e as Error)?.message);
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
   if (req.method !== 'POST') return fail(405, 'POST attendu');
   if (!ANTHROPIC_API_KEY) return fail(500, 'Secret ANTHROPIC_API_KEY manquant');
 
-  let body: { image_base64?: unknown; media_type?: unknown; categories?: unknown };
+  let body: unknown;
   try {
     body = await req.json();
   } catch {
     return fail(400, 'Corps JSON invalide');
   }
+  if (!isObject(body)) return fail(400, 'Corps JSON invalide : objet attendu');
   const { image_base64, media_type, categories } = body;
   if (typeof image_base64 !== 'string' || !image_base64 || typeof media_type !== 'string' || !Array.isArray(categories)) {
     return fail(400, 'image_base64, media_type et categories sont requis');
@@ -93,22 +104,28 @@ Deno.serve(async (req) => {
   }
   if (!res.ok) return fail(502, `API Claude ${res.status}`, await res.text());
 
-  const data = await res.json();
+  let data: { stop_reason?: string; content?: unknown };
+  try {
+    data = await res.json();
+  } catch {
+    return fail(502, 'Réponse de l’API Claude illisible (JSON invalide)');
+  }
   if (data.stop_reason === 'max_tokens') return fail(502, 'Ticket trop long : réponse de Claude tronquée');
-  const text: string = (data.content ?? []).filter((b: { type: string }) => b.type === 'text')
+  const text: string = (Array.isArray(data.content) ? data.content : []).filter((b: { type: string }) => b.type === 'text')
     .map((b: { text: string }) => b.text).join('');
 
   // Le modèle doit renvoyer un objet JSON seul ; on tolère du texte ou des balises autour.
-  let parsed: Record<string, unknown>;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
   } catch {
     return fail(502, 'Réponse de Claude illisible (JSON invalide)', text.slice(0, 500));
   }
+  if (!isObject(parsed)) return fail(502, 'Réponse de Claude illisible (objet JSON attendu)', text.slice(0, 500));
 
   // Garde-fous : on ne fait pas confiance aveuglément à la sortie du modèle.
   const validIds = new Set(cats.map((c) => c.id));
-  const lines = (Array.isArray(parsed.lines) ? parsed.lines : []).map((l: Record<string, unknown>) => {
+  const lines = (Array.isArray(parsed.lines) ? parsed.lines : []).filter(isObject).map((l) => {
     const known = typeof l.category_id === 'string' && validIds.has(l.category_id);
     return {
       raw_label: String(l.raw_label ?? ''),
@@ -130,4 +147,4 @@ Deno.serve(async (req) => {
     matches_total: total_cents == null ? null : sum === total_cents,
     lines,
   });
-});
+}

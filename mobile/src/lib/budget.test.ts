@@ -2,7 +2,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { addMonths, monthOf, plannedFor, summarizeMonths, runway, formatEuros,
   formatAmount, splitEuros, monthLabel, parseSignedCents, tintFor, computedStartCents, groupBreakdown,
-  collapseRows, shortMonthLabel, endOfMonthLabel, projectionLabels, runwayHeadline } from './budget.ts';
+  collapseRows, shortMonthLabel, endOfMonthLabel, projectionLabels, runwayHeadline, balanceStartMonth } from './budget.ts';
+import type { ActualLine, Adjustment } from './budget.ts';
 import type { Category, MonthSummary } from './budget.ts';
 
 describe('addMonths', () => {
@@ -91,6 +92,58 @@ describe('summarizeMonths', () => {
 
   test('sans ajustement : départ = solde final du mois précédent', () => {
     assert.equal(apr.startCents, mar.endCents);
+  });
+});
+
+describe('catégorie archivée', () => {
+  const ancienne: Category = { id: 'ancienne', kind: 'depense', defaultPlannedCents: 30000, archived: true };
+
+  test('prévu 0, même avec un prévu propre au mois', () => {
+    assert.equal(plannedFor(ancienne, '2026-03', [{ categoryId: 'ancienne', month: '2026-03', amountCents: 5000 }]), 0);
+  });
+
+  test('son réel passé compte toujours dans le solde', () => {
+    const [jan, feb] = summarizeMonths({
+      months: ['2026-01', '2026-02'], currentMonth: '2026-02', categories: [ancienne], overrides: [],
+      actuals: [{ categoryId: 'ancienne', month: '2026-01', amountCents: 12000, exceptional: false }],
+      adjustments: [], initialStartCents: 100000,
+    });
+    assert.equal(jan.expenseCents, 12000);
+    assert.equal(jan.endCents, 88000);
+    assert.equal(feb.plannedExpenseCents, 0);
+    assert.equal(feb.endCents, 88000);
+  });
+});
+
+describe('balanceStartMonth', () => {
+  const actuals: ActualLine[] = [
+    { categoryId: 'salaire', month: '2024-05', amountCents: 150000, exceptional: false },
+    { categoryId: 'courses', month: '2024-09', amountCents: 30000, exceptional: false },
+    { categoryId: 'courses', month: '2025-06', amountCents: 45000, exceptional: false },
+  ];
+  const adjustments: Adjustment[] = [{ month: '2024-08', balanceCents: 50000 }, { month: '2025-03', balanceCents: 70000 }];
+  // Ce que fait loadBudget : calcul depuis balanceStartMonth jusqu'à `to`.
+  const endOf = (month: string, from: string, adj: Adjustment[]) => {
+    const start = balanceStartMonth(from, adj.map((a) => a.month), '2024-05');
+    const months: string[] = [];
+    for (let m = start; m <= '2026-06'; m = addMonths(m, 1)) months.push(m);
+    return summarizeMonths({ months, currentMonth: '2026-01', categories: [salaire, courses], overrides: [], actuals, adjustments: adj })
+      .find((x) => x.month === month)!.endCents;
+  };
+
+  test('dernier ajustement ≤ from, sinon premier mois avec du réel, sinon from', () => {
+    assert.equal(balanceStartMonth('2025-01', ['2024-08', '2025-03'], '2024-05'), '2024-08');
+    assert.equal(balanceStartMonth('2024-07', ['2024-08'], '2024-05'), '2024-05');
+    assert.equal(balanceStartMonth('2024-07', [], null), '2024-07');
+    assert.equal(balanceStartMonth('2024-01', [], '2024-05'), '2024-01');
+  });
+
+  test('même solde de fin pour un mois donné, quel que soit le mois affiché', () => {
+    for (const adj of [adjustments, []]) {
+      const ref = endOf('2025-07', '2024-01', adj);
+      for (const from of ['2024-06', '2024-12', '2025-04', '2025-07']) assert.equal(endOf('2025-07', from, adj), ref, from);
+    }
+    assert.equal(endOf('2025-07', '2025-07', adjustments), 70000 - 45000);
   });
 });
 

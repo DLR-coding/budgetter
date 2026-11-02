@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Fragment, useCallback, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
@@ -19,6 +19,8 @@ import { colors, font, radius } from '../../src/theme';
 type Draft = { merchant: string; date: string; note: string; exceptional: boolean };
 const draftOf = (e: EntryRow): Draft =>
   ({ merchant: e.merchant ?? '', date: e.date, note: e.note ?? '', exceptional: e.exceptional });
+const isDirty = (d: Draft, initial: Draft) => d.merchant.trim() !== initial.merchant || d.note.trim() !== initial.note
+  || d.date !== initial.date || d.exceptional !== initial.exceptional;
 
 // Détail d'une saisie (maquette 9) : infos modifiables, articles par catégorie, photo, suppression.
 export default function EntryScreen() {
@@ -33,11 +35,17 @@ export default function EntryScreen() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loaded = useRef<EntryRow | null>(null);
 
-  // Au retour de « Modifier les articles », la saisie est relue.
+  // Au retour de « Modifier les articles », la saisie est relue ; un brouillon modifié et non enregistré est gardé.
   useFocusEffect(useCallback(() => {
     Promise.all([loadEntry(id), loadCategories({ includeArchived: true })])
-      .then(([e, c]) => { setEntry(e); setDraft(draftOf(e)); setCtx(c); })
+      .then(([e, c]) => {
+        const prev = loaded.current;
+        loaded.current = e;
+        setDraft((d) => (d && prev && isDirty(d, draftOf(prev)) ? d : draftOf(e)));
+        setEntry(e); setCtx(c);
+      })
       .catch((e: Error) => setError(e.message));
   }, [id]));
 
@@ -53,9 +61,7 @@ export default function EntryScreen() {
   const kind = entryKind(entry, ctx);
   const n = entry.entry_lines.length;
   const origin = entry.source === 'ticket' ? 'Ticket scanné' : entry.source === 'recurrence' ? 'Récurrente' : 'Saisie manuelle';
-  const initial = draftOf(entry);
-  const dirty = draft.merchant.trim() !== initial.merchant || draft.note.trim() !== initial.note
-    || draft.date !== initial.date || draft.exceptional !== initial.exceptional;
+  const dirty = isDirty(draft, draftOf(entry));
 
   const pickDate = () => {
     const [y, m, d] = draft.date.split('-').map(Number);

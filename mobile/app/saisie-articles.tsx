@@ -13,7 +13,7 @@ import { parseFormula } from '../src/lib/formula';
 import { colors, font, radius } from '../src/theme';
 
 type Params = { entryId?: string; kind?: string; date?: string; merchant?: string; exceptional?: string; categoryId?: string; amount?: string };
-type Item = { key: number; label: string; quantity: number; unitPriceCents: number; categoryId: string };
+type Item = { key: number; label: string; rawLabel?: string; quantity: number; unitPriceCents: number; categoryId: string };
 
 // Teintes des pastilles, selon tintFor du groupe.
 const TINTS = {
@@ -61,7 +61,7 @@ export default function SaisieArticles() {
         setExceptional(e.exceptional);
         setCategoryId(e.entry_lines[0]?.category_id ?? '');
         setItems(e.entry_lines.map((l) => ({
-          key: nextKey.current++, label: l.label ?? l.raw_label ?? '', quantity: l.quantity,
+          key: nextKey.current++, label: l.label ?? l.raw_label ?? '', rawLabel: l.raw_label ?? undefined, quantity: l.quantity,
           unitPriceCents: l.unit_price_cents, categoryId: l.category_id,
         })));
       })
@@ -92,9 +92,10 @@ export default function SaisieArticles() {
     setSaving(true);
     setError(null);
     try {
-      const lines = items.map((i) => ({ quantity: i.quantity, unitPriceCents: i.unitPriceCents, categoryId: i.categoryId, label: i.label || undefined }));
+      const lines = items.map((i) => ({ quantity: i.quantity, unitPriceCents: i.unitPriceCents, categoryId: i.categoryId, label: i.label || undefined, rawLabel: i.rawLabel }));
       if (editId) {
-        await updateEntry(editId, { merchant: merchant.trim() || null, exceptional: kind === 'depense' && exceptional });
+        // formula à null : la formule d'origine ne décrit plus les articles modifiés.
+        await updateEntry(editId, { merchant: merchant.trim() || null, exceptional: kind === 'depense' && exceptional, formula: null });
         await replaceEntryLines(editId, lines);
         router.back();
         return;

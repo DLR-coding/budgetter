@@ -3,8 +3,9 @@ import type { Session } from '@supabase/supabase-js';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, AppState, View } from 'react-native';
 import { Login } from '../src/components/Login';
+import { monthOf } from '../src/lib/budget';
 import { bootstrap } from '../src/lib/data';
 import { supabase } from '../src/lib/supabase';
 import { colors } from '../src/theme';
@@ -20,8 +21,17 @@ export default function RootLayout() {
   }, []);
 
   // Premier lancement : catégories de l'Excel + charges récurrentes du mois.
+  // Relancé au retour au premier plan quand le mois a changé (appli restée ouverte).
   useEffect(() => {
-    if (session) bootstrap().catch(console.warn);
+    if (!session) return;
+    let month = monthOf(new Date());
+    bootstrap().catch(console.warn);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active' || monthOf(new Date()) === month) return;
+      month = monthOf(new Date());
+      bootstrap().catch(console.warn);
+    });
+    return () => sub.remove();
   }, [session?.user.id]);
 
   if (!fontsLoaded || session === undefined) {

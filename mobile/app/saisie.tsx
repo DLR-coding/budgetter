@@ -81,7 +81,7 @@ export default function Saisie() {
 
   const openArticles = () => router.push({
     pathname: '/saisie-articles',
-    params: { kind, date: isoDay(date), merchant, exceptional: exceptional ? '1' : '0', categoryId: categoryId ?? '', amount: input },
+    params: { kind, date: isoDay(date), merchant, exceptional: exceptional ? '1' : '0', categoryId: categoryId ?? '', amount: input.replace(/[+×]$/, '') },
   });
 
   const save = async () => {

@@ -14,6 +14,7 @@ export type Category = {
   id: string;
   kind: GroupKind;
   defaultPlannedCents: number;
+  archived?: boolean; // archivée : son réel compte toujours, son prévu vaut 0
 };
 
 export type PlannedOverride = { categoryId: string; month: Month; amountCents: number };
@@ -48,6 +49,8 @@ export const monthOf = (date: Date | string): Month => {
 };
 
 export function plannedFor(cat: Category, month: Month, overrides: PlannedOverride[]): number {
+  // shortcut: prévu 0 pour tous les mois d'une catégorie archivée (passés compris), faute de date d'archivage.
+  if (cat.archived) return 0;
   const o = overrides.find((x) => x.categoryId === cat.id && x.month === month);
   return o ? o.amountCents : cat.defaultPlannedCents;
 }
@@ -102,6 +105,16 @@ export function summarizeMonths(params: {
  * « Jusqu'à quand je tiens » : dernier mois (à partir du mois en cours) qui finit
  * avec un solde positif ou nul. null si tout l'horizon reste positif.
  */
+/**
+ * Premier mois à calculer pour que les soldes ne dépendent pas de la fenêtre affichée :
+ * le dernier ajustement ≤ from, sinon le premier mois avec du réel (départ à 0), sinon from.
+ */
+export function balanceStartMonth(from: Month, adjustmentMonths: Month[], firstActualMonth: Month | null): Month {
+  const adj = adjustmentMonths.filter((m) => m <= from).sort().pop();
+  if (adj) return adj;
+  return firstActualMonth && firstActualMonth < from ? firstActualMonth : from;
+}
+
 export function runway(summaries: MonthSummary[]): { lastOkMonth: Month | null; firstNegative: MonthSummary | null } {
   const upcoming = summaries.filter((s) => s.status !== 'passe');
   const idx = upcoming.findIndex((s) => s.endCents < 0);
