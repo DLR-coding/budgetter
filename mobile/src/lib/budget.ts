@@ -3,8 +3,10 @@
 //  - Chaque mois a son prévu par catégorie (prévu par défaut, ou valeur propre au mois).
 //  - Un dépassement ou une économie ne se reporte jamais sur les mois suivants.
 //  - Mois passés : on compte le réel. Mois en cours et futurs : chaque catégorie compte son prévu
-//    si elle est « comptée », sinon son réel. Comptée = interrupteur du mois (revenus ou dépenses)
-//    ET interrupteur de la catégorie pour ce mois, tous deux activés par défaut.
+//    (exactement) si elle est « comptée », sinon son réel. Comptée = interrupteur du mois (revenus
+//    ou dépenses, activé par défaut) ET interrupteur de la catégorie pour ce mois. Celui de la
+//    catégorie est automatique tant qu'on n'y a pas touché : activé, sauf si le réel dépasse le prévu.
+//    Choisi à la main, il l'emporte (on peut recompter le prévu malgré un dépassement).
 //  - Le solde de départ d'un mois = l'ajustement saisi pour ce mois s'il existe (solde en début
 //    de mois, avant toute saisie), sinon le solde de fin du mois précédent.
 // Tous les montants sont en centimes. Un mois est noté 'AAAA-MM'.
@@ -19,8 +21,9 @@ export type Category = {
   archived?: boolean; // archivée : son réel compte toujours, son prévu vaut 0
 };
 
-// Réglages d'une catégorie pour un mois. amountCents null = prévu par défaut ; counted absent = true.
-export type PlannedOverride = { categoryId: string; month: Month; amountCents: number | null; counted?: boolean };
+// Réglages d'une catégorie pour un mois. amountCents null = prévu par défaut ;
+// counted null/absent = automatique (compté tant que le réel ne dépasse pas le prévu).
+export type PlannedOverride = { categoryId: string; month: Month; amountCents: number | null; counted?: boolean | null };
 // Interrupteur d'ensemble « Compter le prévu » d'un mois ; absent = activé.
 export type MonthSetting = { month: Month; kind: 'revenu' | 'depense'; plannedCounted: boolean };
 export type ActualLine = { categoryId: string; month: Month; amountCents: number; exceptional: boolean };
@@ -30,7 +33,7 @@ export type MonthSummary = {
   month: Month;
   status: 'passe' | 'en_cours' | 'futur';
   startCents: number;
-  incomeCents: number;          // compté dans le solde (réel ou prévu selon le statut et les interrupteurs)
+  incomeCents: number;          // compté dans le solde (« Revenu total » de l'Excel) : réel ou prévu par catégorie
   expenseCents: number;         // idem
   plannedIncomeCents: number;
   plannedExpenseCents: number;
@@ -60,10 +63,18 @@ export function plannedFor(cat: Category, month: Month, overrides: PlannedOverri
   return o?.amountCents ?? cat.defaultPlannedCents;
 }
 
+/** Interrupteur de la catégorie pour ce mois : choix manuel, sinon automatique (activé tant que réel ≤ prévu). */
+export function categoryCounted(cat: Category, month: Month, overrides: PlannedOverride[], actualCents: number) {
+  const manual = overrides.find((x) => x.categoryId === cat.id && x.month === month)?.counted ?? null;
+  return { on: manual ?? actualCents <= plannedFor(cat, month, overrides), auto: manual === null };
+}
+
 /** Le prévu de la catégorie compte-t-il dans le solde de ce mois (hors règle des mois passés) ? */
-export function isPlannedCounted(cat: Category, month: Month, overrides: PlannedOverride[], monthSettings: MonthSetting[]): boolean {
+export function isPlannedCounted(
+  cat: Category, month: Month, overrides: PlannedOverride[], monthSettings: MonthSetting[], actualCents: number,
+): boolean {
   const all = monthSettings.find((x) => x.month === month && x.kind === cat.kind)?.plannedCounted ?? true;
-  return all && (overrides.find((x) => x.categoryId === cat.id && x.month === month)?.counted ?? true);
+  return all && categoryCounted(cat, month, overrides, actualCents).on;
 }
 
 export function summarizeMonths(params: {
@@ -93,7 +104,7 @@ export function summarizeMonths(params: {
       const lines = actuals.filter((a) => a.categoryId === cat.id && a.month === month);
       const actual = lines.reduce((s, l) => s + l.amountCents, 0);
       const actualNoExc = lines.filter((l) => !l.exceptional).reduce((s, l) => s + l.amountCents, 0);
-      const counted = status !== 'passe' && isPlannedCounted(cat, month, overrides, monthSettings) ? planned : actual;
+      const counted = status !== 'passe' && isPlannedCounted(cat, month, overrides, monthSettings, actual) ? planned : actual;
       if (cat.kind === 'revenu') { plannedIncome += planned; actualIncome += actual; incomeCents += counted; }
       else { plannedExpense += planned; actualExpense += actual; actualExpenseNoExc += actualNoExc; expenseCents += counted; }
     }

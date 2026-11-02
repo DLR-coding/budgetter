@@ -128,8 +128,11 @@ export default function MonthScreen() {
               </View>
               <Text style={s.flowLabel}>Revenus</Text>
             </View>
-            <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(summary.actualIncomeCents, true)}</Text>
-            <Text style={s.flowPlanned}>Prévu {formatEuros(summary.plannedIncomeCents)}</Text>
+            {/* Gros montant = ce qui compte dans le solde (« Revenu total » de l'Excel). */}
+            <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(summary.incomeCents, true)}</Text>
+            <Text style={s.flowPlanned}>
+              {formatAmount(summary.actualIncomeCents)} reçus · {formatAmount(summary.plannedIncomeCents)} prévus
+            </Text>
             {summary.status !== 'passe' && (
               <CountedSwitch value={counted('revenu')} label="Compter le prévu des revenus"
                 onChange={(on) => toggleCounted('revenu', on)} />
@@ -142,8 +145,10 @@ export default function MonthScreen() {
               </View>
               <Text style={s.flowLabel}>Dépenses</Text>
             </View>
-            <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(-summary.actualExpenseCents)}</Text>
-            <Text style={s.flowPlanned}>Prévu {formatEuros(summary.plannedExpenseCents)}</Text>
+            <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(-summary.expenseCents)}</Text>
+            <Text style={s.flowPlanned}>
+              {formatAmount(summary.actualExpenseCents)} dépensés · {formatAmount(summary.plannedExpenseCents)} prévus
+            </Text>
             {summary.status !== 'passe' && (
               <CountedSwitch value={counted('depense')} label="Compter le prévu des dépenses"
                 onChange={(on) => toggleCounted('depense', on)} />

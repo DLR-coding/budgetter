@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { addMonths, monthOf, plannedFor, summarizeMonths, runway, formatEuros,
   formatAmount, splitEuros, monthLabel, parseSignedCents, tintFor, computedStartCents, groupBreakdown,
   collapseRows, shortMonthLabel, endOfMonthLabel, projectionLabels, runwayHeadline, balanceStartMonth,
-  isPlannedCounted } from './budget.ts';
+  isPlannedCounted, categoryCounted } from './budget.ts';
 import type { ActualLine, Adjustment, MonthSetting, PlannedOverride } from './budget.ts';
 import type { Category, MonthSummary } from './budget.ts';
 
@@ -55,7 +55,7 @@ describe('summarizeMonths', () => {
       { categoryId: 'salaire', month: '2026-01', amountCents: 210000, exceptional: false },
       { categoryId: 'courses', month: '2026-01', amountCents: 35000, exceptional: false },
       { categoryId: 'courses', month: '2026-01', amountCents: 15000, exceptional: true },
-      { categoryId: 'courses', month: '2026-02', amountCents: 99999, exceptional: false },
+      { categoryId: 'courses', month: '2026-02', amountCents: 30000, exceptional: false },
     ],
     adjustments: [{ month: '2026-03', balanceCents: 5000 }],
     initialStartCents: 100000,
@@ -79,7 +79,7 @@ describe('summarizeMonths', () => {
 
   test('mois en cours : compte le prévu, sans report du dépassement de janvier', () => {
     assert.equal(feb.startCents, jan.endCents);
-    assert.equal(feb.actualExpenseCents, 99999);
+    assert.equal(feb.actualExpenseCents, 30000);
     assert.equal(feb.expenseCents, 40000);
     assert.equal(feb.incomeCents, 200000);
     assert.equal(feb.endCents, 260000 + 200000 - 40000);
@@ -160,10 +160,49 @@ describe('interrupteurs « Compter le prévu »', () => {
   test('isPlannedCounted : interrupteur du mois ET de la catégorie', () => {
     const off: MonthSetting[] = [{ month: '2026-11', kind: 'depense', plannedCounted: false }];
     const catOff = [{ categoryId: 'bouffe', month: '2026-11', amountCents: 5000, counted: false }];
-    assert.equal(isPlannedCounted(bouffe, '2026-11', [], []), true);
-    assert.equal(isPlannedCounted(bouffe, '2026-11', [], off), false);
-    assert.equal(isPlannedCounted(bouffe, '2026-11', catOff, []), false);
-    assert.equal(isPlannedCounted(paie, '2026-11', catOff, off), true);
+    assert.equal(isPlannedCounted(bouffe, '2026-11', [], [], 0), true);
+    assert.equal(isPlannedCounted(bouffe, '2026-11', [], off, 0), false);
+    assert.equal(isPlannedCounted(bouffe, '2026-11', catOff, [], 0), false);
+    assert.equal(isPlannedCounted(paie, '2026-11', catOff, off, 0), true);
+  });
+
+  test('dépassement : désactivé automatiquement, le réel compte', () => {
+    assert.deepEqual(categoryCounted(bouffe, '2026-11', [], 7200), { on: true, auto: true });
+    assert.deepEqual(categoryCounted(bouffe, '2026-11', [], 7201), { on: false, auto: true });
+    const nov = summarizeMonths({
+      months: ['2026-11'], currentMonth: '2026-11', categories: [bouffe], overrides: [],
+      actuals: [{ categoryId: 'bouffe', month: '2026-11', amountCents: 9000, exceptional: false }],
+      adjustments: [{ month: '2026-11', balanceCents: 130000 }],
+    })[0];
+    assert.equal(nov.expenseCents, 9000);
+  });
+
+  test('réactivé à la main malgré le dépassement : le prévu compte', () => {
+    const overrides = [{ categoryId: 'bouffe', month: '2026-11', amountCents: null, counted: true }];
+    assert.deepEqual(categoryCounted(bouffe, '2026-11', overrides, 9000), { on: true, auto: false });
+    const nov = summarizeMonths({
+      months: ['2026-11'], currentMonth: '2026-11', categories: [bouffe], overrides,
+      actuals: [{ categoryId: 'bouffe', month: '2026-11', amountCents: 9000, exceptional: false }],
+      adjustments: [],
+    })[0];
+    assert.equal(nov.expenseCents, 7200);
+  });
+
+  test('octobre 2026 de l’Excel : 819,74 € de dépenses comptées', () => {
+    const c = (id: string, euros: number): Category => ({ id, kind: 'depense', defaultPlannedCents: Math.round(euros * 100) });
+    const categories = [c('loyer', 565), c('elec', 65), c('tel', 20), c('cts', 28), c('mutuelle', 21.42), c('sogessur', 6.34),
+      c('sobrio', 3.5), c('nourriture', 40), c('laverie', 12), c('eglise', 10), c('groceries', 5), c('selfcare', 5),
+      c('autre', 0), c('loisirs', 0)];
+    const reel: [string, number][] = [['loyer', 56500], ['elec', 6522], ['tel', 2000], ['cts', 2800], ['mutuelle', 2142],
+      ['sogessur', 1296], ['sobrio', 350], ['nourriture', 2743], ['groceries', 2664], ['autre', 2000], ['loisirs', 1200]];
+    const [oct] = summarizeMonths({
+      months: ['2026-10'], currentMonth: '2026-10', categories,
+      // Laverie et Église effacées dans l'Excel : interrupteur coupé (réel 0).
+      overrides: ['laverie', 'eglise'].map((id) => ({ categoryId: id, month: '2026-10', amountCents: null, counted: false })),
+      actuals: reel.map(([id, cents]) => ({ categoryId: id, month: '2026-10', amountCents: cents, exceptional: false })),
+      adjustments: [],
+    });
+    assert.equal(oct.expenseCents, 81974);
   });
 
   test('prévu du mois null : prévu par défaut', () => {

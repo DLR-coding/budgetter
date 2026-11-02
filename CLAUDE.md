@@ -39,9 +39,14 @@ libellé, quantité, prix unitaire, catégorie. Une dépense simple = 1 ligne.
 - Chaque mois a son prévu par catégorie. Un dépassement ou une économie **ne se reporte jamais**
   sur les mois suivants.
 - Mois passés : on compte toujours le réel. Mois en cours et futurs : chaque catégorie compte son
-  prévu si elle est « comptée », sinon son réel. Comptée = interrupteur « Compter le prévu » d’ensemble
-  du mois (revenus ou dépenses, écran Mois) ET interrupteur de la catégorie pour ce mois (Détail
-  catégorie), tous deux activés par défaut. Tables `month_settings` et `planned_overrides.counted`.
+  prévu (exactement, même si le réel est plus petit ou plus grand) si elle est « comptée », sinon son réel.
+  Comptée = interrupteur « Compter le prévu » d’ensemble du mois (revenus ou dépenses, écran Mois,
+  activé par défaut) ET interrupteur de la catégorie pour ce mois (Détail catégorie). Celui de la
+  catégorie est automatique tant qu’on n’y touche pas : activé, désactivé dès que le réel dépasse le
+  prévu ; un choix manuel l’emporte. Tables `month_settings` et `planned_overrides.counted` (null = auto).
+- Correspondance avec l’Excel : montant compté d’une catégorie = sa cellule ; gros montant des cards
+  Dépenses / Revenus = « Dépenses totales » / « Revenu total » ; solde projeté = « Solde final projeté »
+  = Départ + Revenus − Dépenses, vérifiable à la main depuis l’écran Mois.
 - Solde de départ (« Départ ») = ajustement du mois s'il existe — solde en **début de mois**, avant
   toute saisie —, sinon solde final du mois précédent.
 - L’écran Mois et la projection lisent uniquement `summarizeMonths` : aucun calcul de solde parallèle.

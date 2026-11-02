@@ -7,7 +7,9 @@ import {
   BottomSheet, Card, CircleButton, Divider, EntryIcon, PrimaryButton, ProgressBar, ScreenHeader, SectionTitle,
 } from '../../src/components/ui';
 import { parsePriceCents } from '../../src/lib/articles';
-import { formatAmount, formatEuros, monthLabel, monthOf, plannedFor, type Category, type Month } from '../../src/lib/budget';
+import {
+  categoryCounted, formatAmount, formatEuros, monthLabel, monthOf, plannedFor, type Category, type Month,
+} from '../../src/lib/budget';
 import {
   clearPlannedOverride, loadBudget, loadCategories, loadEntries, setCategoryCounted, setPlannedOverride, type EntryRow,
 } from '../../src/lib/data';
@@ -64,8 +66,6 @@ export default function CategoryScreen() {
   const planned = plannedFor(category, month, data.overrides);
   const override = data.overrides.find((o) => o.categoryId === id && o.month === month);
   const hasOverride = override?.amountCents != null;
-  // Interrupteur de la catégorie ; celui du mois (écran Mois) peut le neutraliser.
-  const catCounted = pendingCounted ?? override?.counted ?? true;
   const monthCounted = data.monthSettings.find((x) => x.month === month && x.kind === kind)?.plannedCounted ?? true;
   const showCounted = month >= monthOf(new Date()) && kind !== 'epargne';
   const items = data.entries
@@ -75,6 +75,16 @@ export default function CategoryScreen() {
     })
     .filter((x) => x.lines.length > 0);
   const actual = items.reduce((t, x) => t + x.cents, 0);
+  // Interrupteur de la catégorie (automatique tant qu'on n'y touche pas) ; celui du mois (écran Mois) peut le neutraliser.
+  const auto = categoryCounted(category, month, data.overrides, actual);
+  const catCounted = pendingCounted ?? auto.on;
+  const countedNote = !monthCounted
+    ? `Désactivé pour tous les ${kind === 'revenu' ? 'revenus' : 'dépenses'} de ${monthName} (écran Mois) : le solde compte le réel (${formatEuros(actual)})`
+    : catCounted
+      ? `Le solde compte le prévu (${formatEuros(planned)})${actual > planned ? ', même dépassé' : ''}`
+      : pendingCounted === null && auto.auto
+        ? `Désactivé automatiquement : prévu dépassé, le solde compte le réel (${formatEuros(actual)})`
+        : `Désactivé : le solde compte le réel (${formatEuros(actual)})`;
   const over = actual > planned;
 
   // Une saisie dépliée a sa propre carte ; les autres se suivent dans une carte commune.
@@ -140,13 +150,7 @@ export default function CategoryScreen() {
           <Card style={s.counted}>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={s.countedTitle}>Compter le prévu en {monthName}</Text>
-              <Text style={s.muted}>
-                {!monthCounted
-                  ? `Désactivé pour tous les ${kind === 'revenu' ? 'revenus' : 'dépenses'} de ${monthName} (écran Mois) : le solde projeté ne compte que le réel (${formatEuros(actual)})`
-                  : catCounted
-                    ? `Activé : le solde projeté compte le prévu (${formatEuros(planned)})`
-                    : `Désactivé : le solde projeté ne compte que le réel (${formatEuros(actual)})`}
-              </Text>
+              <Text style={s.muted}>{countedNote}</Text>
             </View>
             <Switch value={catCounted} onValueChange={toggleCounted}
               accessibilityLabel={`Compter le prévu de ${cat.name} en ${monthName}`}
