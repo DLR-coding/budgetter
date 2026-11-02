@@ -3,3 +3,10 @@ node_modules/
 .expo/
 *.apk
 *:Zone.Identifier
+
+# données personnelles (Excel de budget et exports) : jamais commitées
+*.xlsx
+budget__*.pdf
+
+# worktrees des sessions Claude
+.claude/worktrees/
