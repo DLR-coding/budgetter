@@ -25,6 +25,8 @@ export default function MonthScreen() {
   const [loading, setLoading] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
   const [expanded, setExpanded] = useState<string[]>([]);
+  // Interrupteurs basculés en attente d'enregistrement, par « mois:type » : affichés tout de suite.
+  const [pending, setPending] = useState<Record<string, boolean>>({});
 
   // `at` change à chaque appui depuis Projection : recentre même si le mois demandé est le même qu'avant.
   useEffect(() => { if (isMonth(params.month)) setMonth(params.month); }, [params.month, params.at]);
@@ -57,14 +59,18 @@ export default function MonthScreen() {
     return <View style={[s.screen, { justifyContent: 'center' }]}><ActivityIndicator color={colors.accent} /></View>;
   }
 
-  const counted = (kind: 'revenu' | 'depense') =>
-    data?.monthSettings.find((x) => x.month === month && x.kind === kind)?.plannedCounted ?? true;
+  const counted = (kind: 'revenu' | 'depense') => pending[`${month}:${kind}`]
+    ?? data?.monthSettings.find((x) => x.month === month && x.kind === kind)?.plannedCounted ?? true;
   const toggleCounted = async (kind: 'revenu' | 'depense', on: boolean) => {
+    const key = `${month}:${kind}`;
+    setPending((p) => ({ ...p, [key]: on }));
     try {
       await setMonthCounted(month, kind, on);
       await load();
     } catch (e) {
-      setError((e as Error).message);
+      setError((e as Error).message); // l'interrupteur revient à la valeur enregistrée
+    } finally {
+      setPending(({ [key]: _, ...rest }) => rest);
     }
   };
   const headline = horizon.length ? runwayHeadline(horizon) : null;

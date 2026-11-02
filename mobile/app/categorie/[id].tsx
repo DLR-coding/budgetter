@@ -27,6 +27,7 @@ export default function CategoryScreen() {
   const [menu, setMenu] = useState<'closed' | 'menu' | 'edit'>('closed');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [pendingCounted, setPendingCounted] = useState<boolean | null>(null); // affiché avant la fin de l'enregistrement
 
   const load = useCallback(async () => {
     try {
@@ -64,7 +65,7 @@ export default function CategoryScreen() {
   const override = data.overrides.find((o) => o.categoryId === id && o.month === month);
   const hasOverride = override?.amountCents != null;
   // Interrupteur de la catégorie ; celui du mois (écran Mois) peut le neutraliser.
-  const catCounted = override?.counted ?? true;
+  const catCounted = pendingCounted ?? override?.counted ?? true;
   const monthCounted = data.monthSettings.find((x) => x.month === month && x.kind === kind)?.plannedCounted ?? true;
   const showCounted = month >= monthOf(new Date()) && kind !== 'epargne';
   const items = data.entries
@@ -103,6 +104,17 @@ export default function CategoryScreen() {
     }
   };
   const newCents = parsePriceCents(amount);
+  const toggleCounted = async (on: boolean) => {
+    setPendingCounted(on);
+    try {
+      await setCategoryCounted(id, month, on);
+      await load();
+    } catch (e) {
+      setError((e as Error).message); // l'interrupteur revient à la valeur enregistrée
+    } finally {
+      setPendingCounted(null);
+    }
+  };
 
   return (
     <View style={s.screen}>
@@ -136,7 +148,7 @@ export default function CategoryScreen() {
                     : `Désactivé : le solde projeté ne compte que le réel (${formatEuros(actual)})`}
               </Text>
             </View>
-            <Switch value={catCounted} onValueChange={(on) => run(() => setCategoryCounted(id, month, on))}
+            <Switch value={catCounted} onValueChange={toggleCounted}
               accessibilityLabel={`Compter le prévu de ${cat.name} en ${monthName}`}
               trackColor={{ false: colors.surface2, true: colors.accent }} thumbColor={colors.text} />
           </Card>
