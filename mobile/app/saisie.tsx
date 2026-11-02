@@ -118,8 +118,8 @@ export default function Saisie() {
             </Pressable>
           ))}
         </View>
-        <Pressable accessibilityLabel="Scanner un ticket (bientôt)" accessibilityState={{ disabled: true }}
-          disabled style={[s.circle, s.disabled]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Scanner un ticket"
+          onPress={() => router.push('/ticket')} style={s.circle}>
           <Ionicons name="scan-outline" size={22} color={colors.accentText} />
         </Pressable>
       </View>
