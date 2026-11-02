@@ -1,22 +1,27 @@
 // Jetons de design repris des maquettes (Claude Design).
-// Palette « bleu calme » : fonds bleu nuit, accent bleu doux, vert calme pour les revenus.
+// Neutres noirs d'origine, accent bleu nuit profond,
+// revenus en vert calme, alertes en orange.
 export const colors = {
-  bg: '#0A0F18',
-  surface: '#131A26',
-  surface2: '#1A2331',
-  surfaceSunken: '#0F1520',
-  border: '#222C3B',
-  borderStrong: '#283447',
-  divider: '#1D2633',
-  text: '#F2F5F9',
-  textSoft: '#C8D0DB',
-  textMuted: '#98A3B3',
-  textFaint: '#7A8699',
-  accent: '#7DB0F5',      // actions principales, progression dans le budget
-  accentBg: '#1A2A44',    // fond teinté de l'accent (puces de catégorie)
-  accentInk: '#0A0F18',   // texte posé sur l'accent
-  positive: '#8CCBA5',    // revenus, confirmations
-  positiveBg: '#1A2E25',
+  bg: '#0B0C0E',
+  surface: '#16181B',
+  surface2: '#1F2226',
+  border: '#26292E',
+  borderStrong: '#2C3035',
+  divider: '#222529',
+  text: '#F4F5F6',
+  textSoft: '#C9CDD2',
+  textMuted: '#9BA1A8',
+  textFaint: '#7A8088',
+
+  accent: '#2F52AE',      // bleu nuit : boutons, « + », barres de progression
+  accentInk: '#F4F5F6',   // texte posé sur l'accent
+  accentText: '#6F8FDB',  // liens, icônes et textes accent sur fond sombre
+  accentTint: '#1A2A44',  // fonds teintés (puces de catégorie, bandeaux)
+
+  income: '#8CCBA5',      // revenus : vert calme
+  incomeBg: '#1A2E25',
+  info: '#6F8FDB',        // options, confirmations
+  infoBg: '#1A2A44',
   warn: '#FF9E57',        // dépassements, lignes à vérifier
   warnBg: '#2E2216',
 };
