@@ -1,7 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { addMonths, monthOf, plannedFor, summarizeMonths, runway, formatEuros,
-  formatAmount, splitEuros, monthLabel, parseSignedCents, tintFor } from './budget.ts';
+  formatAmount, splitEuros, monthLabel, parseSignedCents, tintFor, computedStartCents, groupBreakdown,
+  collapseRows, shortMonthLabel, endOfMonthLabel, projectionLabels, runwayHeadline } from './budget.ts';
 import type { Category, MonthSummary } from './budget.ts';
 
 describe('addMonths', () => {
@@ -164,6 +165,88 @@ describe('tintFor', () => {
     assert.equal(tintFor({ kind: 'depense', position: 2 }), 'accent');
     assert.equal(tintFor({ kind: 'depense', position: 3 }), 'income');
     assert.equal(tintFor({ kind: 'epargne', position: 4 }), 'accent');
+  });
+});
+
+describe('computedStartCents', () => {
+  const sums = summarizeMonths({
+    months: ['2026-10', '2026-11'], currentMonth: '2026-10', categories: [salaire],
+    overrides: [], actuals: [], adjustments: [{ month: '2026-11', balanceCents: 123 }], initialStartCents: 1000,
+  });
+  test('fin du mois précédent, ajustement du mois ignoré', () => {
+    assert.equal(sums[1].startCents, 123);
+    assert.equal(computedStartCents(sums, '2026-11'), 1000 + 200000);
+  });
+  test('premier mois chargé : 0 ; mois absent : erreur', () => {
+    assert.equal(computedStartCents(sums, '2026-10'), 0);
+    assert.throws(() => computedStartCents(sums, '2027-01'));
+  });
+});
+
+describe('groupBreakdown', () => {
+  const loyer: Category = { id: 'loyer', kind: 'depense', defaultPlannedCents: 56500 };
+  const vide: Category = { id: 'vide', kind: 'depense', defaultPlannedCents: 0 };
+  const res = groupBreakdown({
+    month: '2026-11',
+    groups: [
+      { id: 'rev', name: 'Revenus', kind: 'revenu', position: 0 },
+      { id: 'fix', name: 'Fixes', kind: 'depense', position: 1 },
+      { id: 'bouffe', name: 'Bouffe', kind: 'depense', position: 2 },
+      { id: 'rien', name: 'Variables', kind: 'depense', position: 3 },
+    ],
+    cats: [
+      { id: 'salaire', group_id: 'rev', name: 'Salaire' },
+      { id: 'loyer', group_id: 'fix', name: 'Loyer' },
+      { id: 'courses', group_id: 'bouffe', name: 'Nourriture' },
+      { id: 'vide', group_id: 'rien', name: 'Vide' },
+    ],
+    categories: [salaire, loyer, courses, vide],
+    overrides: [{ categoryId: 'courses', month: '2026-11', amountCents: 4000 }],
+    actuals: [
+      { categoryId: 'loyer', month: '2026-11', amountCents: 56500, exceptional: false },
+      { categoryId: 'courses', month: '2026-11', amountCents: 2000, exceptional: false },
+      { categoryId: 'courses', month: '2026-11', amountCents: 743, exceptional: true },
+      { categoryId: 'courses', month: '2026-10', amountCents: 9999, exceptional: false },
+    ],
+  });
+  test('dépenses seulement, groupes vides omis, réel du mois avec exceptionnelles', () => {
+    assert.deepEqual(res.map((g) => g.id), ['fix', 'bouffe']);
+    assert.deepEqual(res[1], {
+      id: 'bouffe', name: 'Bouffe', position: 2, plannedCents: 4000, actualCents: 2743,
+      categories: [{ id: 'courses', name: 'Nourriture', plannedCents: 4000, actualCents: 2743 }],
+    });
+  });
+});
+
+describe('collapseRows', () => {
+  const r = (id: string, p: number, a: number) => ({ id, name: id, plannedCents: p, actualCents: a });
+  test('rien à replier', () => {
+    const rows = [r('a', 1, 1), r('b', 2, 2)];
+    assert.deepEqual(collapseRows(rows, 2), { shown: rows, rest: null });
+  });
+  test('« + N autres » avec totaux', () => {
+    const { shown, rest } = collapseRows([r('a', 1, 1), r('b', 2, 2), r('c', 30, 10), r('d', 40, 40)], 2);
+    assert.deepEqual(shown.map((x) => x.id), ['a', 'b']);
+    assert.deepEqual(rest, { count: 2, plannedCents: 70, actualCents: 50 });
+  });
+});
+
+describe('libellés de la projection', () => {
+  test('mois court, fin de mois, année seulement quand elle change', () => {
+    assert.equal(shortMonthLabel('2027-02'), 'Fév');
+    assert.equal(endOfMonthLabel('2027-01'), 'fin janvier 2027');
+    assert.deepEqual(projectionLabels(['2026-11', '2026-12', '2027-01', '2027-02']),
+      ['Novembre', 'Décembre', 'Janvier 2027', 'Février']);
+  });
+
+  const s = (month: string, endCents: number) => ({ month, status: 'futur', endCents }) as MonthSummary;
+  test('runwayHeadline : jusqu’à, au-delà (élision), négatif dès le premier mois', () => {
+    const feb = s('2027-02', -50161);
+    assert.deepEqual(runwayHeadline([s('2026-12', 1), s('2027-01', 0), feb, s('2027-03', -9)]),
+      { lead: 'Avec tes prévus, tu tiens jusqu’à', title: 'fin janvier 2027', firstNegative: feb });
+    assert.equal(runwayHeadline([s('2026-11', 1), s('2027-04', 1)]).title, 'd’avril 2027');
+    assert.equal(runwayHeadline([s('2027-05', 1)]).title, 'de mai 2027');
+    assert.equal(runwayHeadline([s('2027-05', -1)]).title, 'fin mai 2027');
   });
 });
 

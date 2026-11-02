@@ -151,3 +151,92 @@ export function parseSignedCents(text: string): number | null {
 /** Teinte d'une pastille de catégorie : revenus en vert, groupes de dépense en alternance bleu / vert. */
 export const tintFor = (group: { kind: GroupKind; position: number }): 'accent' | 'income' =>
   group.kind === 'revenu' || group.position % 2 === 1 ? 'income' : 'accent';
+
+// ——— Écran Mois et Projection ———
+
+/** Solde de départ calculé par l'appli : fin du mois précédent, sans tenir compte de l'ajustement du mois. */
+export function computedStartCents(summaries: MonthSummary[], month: Month): number {
+  const i = summaries.findIndex((s) => s.month === month);
+  if (i === -1) throw new Error(`Mois ${month} absent des soldes calculés`);
+  return i > 0 ? summaries[i - 1].endCents : 0; // premier mois chargé : départ à 0, comme summarizeMonths
+}
+
+export type CategoryLine = { id: string; name: string; plannedCents: number; actualCents: number };
+export type GroupBreakdown = {
+  id: string; name: string; position: number; plannedCents: number; actualCents: number; categories: CategoryLine[];
+};
+
+/** Groupes de dépense du mois : prévu et réel par catégorie (celles à 0 / 0 sont omises), puis totaux du groupe. */
+export function groupBreakdown(params: {
+  month: Month;
+  groups: { id: string; name: string; kind: GroupKind; position: number }[];
+  cats: { id: string; group_id: string; name: string }[]; // dans l'ordre d'affichage
+  categories: Category[];
+  overrides: PlannedOverride[];
+  actuals: ActualLine[];
+}): GroupBreakdown[] {
+  const { month, groups, cats, categories, overrides, actuals } = params;
+  return groups.filter((g) => g.kind === 'depense').map((g) => {
+    const lines = cats.filter((c) => c.group_id === g.id).flatMap((c) => {
+      const cat = categories.find((x) => x.id === c.id);
+      if (!cat) return [];
+      const plannedCents = plannedFor(cat, month, overrides);
+      const actualCents = actuals.filter((a) => a.categoryId === c.id && a.month === month)
+        .reduce((s, a) => s + a.amountCents, 0);
+      return plannedCents > 0 || actualCents > 0 ? [{ id: c.id, name: c.name, plannedCents, actualCents }] : [];
+    });
+    return {
+      id: g.id, name: g.name, position: g.position, categories: lines,
+      plannedCents: lines.reduce((s, c) => s + c.plannedCents, 0),
+      actualCents: lines.reduce((s, c) => s + c.actualCents, 0),
+    };
+  }).filter((g) => g.categories.length > 0);
+}
+
+/** Garde les `keep` premières lignes et résume les autres (« + 5 autres charges »). rest null si rien à replier. */
+export function collapseRows(rows: CategoryLine[], keep: number) {
+  if (rows.length <= keep) return { shown: rows, rest: null };
+  const hidden = rows.slice(keep);
+  return {
+    shown: rows.slice(0, keep),
+    rest: {
+      count: hidden.length,
+      plannedCents: hidden.reduce((s, c) => s + c.plannedCents, 0),
+      actualCents: hidden.reduce((s, c) => s + c.actualCents, 0),
+    },
+  };
+}
+
+const MONTHS_SHORT = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+
+/** « Nov », « Fév » : libellés du mini-graphe. */
+export const shortMonthLabel = (month: Month) => MONTHS_SHORT[Number(month.slice(5, 7)) - 1];
+
+/** Nom du mois en minuscules, sans l'année : « novembre ». */
+export const monthName = (month: Month) => monthLabel(month, false).toLowerCase();
+
+/** « fin janvier 2027 ». */
+export const endOfMonthLabel = (month: Month) => `fin ${monthName(month)} ${month.slice(0, 4)}`;
+
+/** Libellés des lignes de la projection : l'année n'apparaît que lorsqu'elle change (« Janvier 2027 »). */
+export const projectionLabels = (months: Month[]) =>
+  months.map((m, i) => monthLabel(m, i > 0 && m.slice(0, 4) !== months[i - 1].slice(0, 4)));
+
+/**
+ * « Jusqu'où je tiens » sur la fenêtre affichée (mois en cours → +5).
+ * lead : petite ligne ; title : gros texte ; firstNegative : premier mois sous zéro, s'il y en a un.
+ */
+export function runwayHeadline(window: MonthSummary[]) {
+  const { lastOkMonth, firstNegative } = runway(window);
+  if (!firstNegative) {
+    const last = window[window.length - 1].month;
+    const name = monthName(last);
+    return {
+      lead: 'Avec tes prévus, tu tiens au-delà',
+      title: `${/^[aeiouyéâ]/.test(name) ? 'd’' : 'de '}${name} ${last.slice(0, 4)}`,
+      firstNegative: null,
+    };
+  }
+  if (lastOkMonth) return { lead: 'Avec tes prévus, tu tiens jusqu’à', title: endOfMonthLabel(lastOkMonth), firstNegative };
+  return { lead: 'Avec tes prévus, ton solde passe sous zéro', title: endOfMonthLabel(firstNegative.month), firstNegative };
+}
