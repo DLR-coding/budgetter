@@ -39,6 +39,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="saisie" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="saisie-articles" />
         </Stack>
       ) : (
         <Login />

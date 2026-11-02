@@ -55,6 +55,27 @@ export async function loadBudget(from: Month, to: Month) {
   return { groups, cats, categories, overrides, actuals, summaries };
 }
 
+/** Groupes et catégories actives, pour la saisie. */
+export async function loadCategories() {
+  const [g, c] = await Promise.all([
+    supabase.from('groups').select('*').order('position'),
+    supabase.from('categories').select('*').eq('archived', false).order('position'),
+  ]);
+  if (g.error) throw g.error;
+  if (c.error) throw c.error;
+  return { groups: (g.data ?? []) as GroupRow[], cats: (c.data ?? []) as CategoryRow[] };
+}
+
+/** Catégories classées par nombre d'articles saisis sur environ 90 jours (3 mois pleins). */
+export async function topCategoryIds(): Promise<string[]> {
+  const since = toDate(addMonths(monthOf(new Date()), -3));
+  const { data, error } = await supabase.from('line_amounts').select('category_id').gte('month', since);
+  if (error) throw error;
+  const counts = new Map<string, number>();
+  for (const r of data ?? []) counts.set(r.category_id, (counts.get(r.category_id) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+}
+
 /** Enregistre une saisie et ses lignes (une seule ligne pour un montant simple). */
 export async function saveEntry(input: {
   date: string; merchant?: string; note?: string; exceptional?: boolean;
