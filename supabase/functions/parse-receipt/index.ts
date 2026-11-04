@@ -60,6 +60,13 @@ Deno.serve(async (req) => {
 
 async function handle(req: Request): Promise<Response> {
   if (req.method !== 'POST') return fail(405, 'POST attendu');
+  // La clé publishable (présente dans l'APK) passe la passerelle : on exige un utilisateur connecté,
+  // sinon n'importe qui pourrait consommer le quota LiteLLM.
+  const auth = req.headers.get('authorization') ?? '';
+  const who = await fetch(`${Deno.env.get('SUPABASE_URL')}/auth/v1/user`, {
+    headers: { authorization: auth, apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '' },
+  });
+  if (!auth.startsWith('Bearer ') || !who.ok) return fail(401, 'Connexion requise');
   if (!LLM_BASE_URL || !LLM_API_KEY) return fail(500, 'Secrets LLM_BASE_URL et LLM_API_KEY requis');
 
   let body: unknown;
