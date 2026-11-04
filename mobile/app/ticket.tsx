@@ -1,4 +1,4 @@
-// Maquette 4 · Validation du ticket : photo → lecture par Claude → vérification des lignes → saisie.
+// Maquette 4 · Validation du ticket : photo → lecture par le service IA → vérification des lignes → saisie.
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -12,10 +12,11 @@ import {
   canSave, linesTotal, matchesTotal, needsReview, receiptDate, receiptSubtitle, removeLine, setLineCategory, toSaveLines,
   type ParsedReceipt,
 } from '../src/lib/receipt';
-import { parseReceipt, removeReceipt, takeReceiptPhoto, uploadReceipt } from '../src/lib/receipts';
+import { loadAiSettings } from '../src/lib/ai-settings';
+import { MISSING_AI_SETTINGS, parseReceipt, removeReceipt, takeReceiptPhoto, uploadReceipt } from '../src/lib/receipts';
 import { colors, font, radius } from '../src/theme';
 
-type Phase = { step: 'photo' } | { step: 'loading' } | { step: 'error'; message: string } | { step: 'ready' };
+type Phase = { step: 'photo' } | { step: 'loading' } | { step: 'error'; message: string; settings?: boolean } | { step: 'ready' };
 
 export default function Ticket() {
   const insets = useSafeAreaInsets();
@@ -60,6 +61,8 @@ export default function Ticket() {
   async function shoot() {
     setPhase({ step: 'photo' });
     try {
+      // Sans service IA réglé, inutile de prendre la photo.
+      if (!(await loadAiSettings())) return setPhase({ step: 'error', message: MISSING_AI_SETTINGS, settings: true });
       const shot = await takeReceiptPhoto();
       if (!shot) return router.back();
       photo.current = shot.base64;
@@ -117,7 +120,9 @@ export default function Ticket() {
             <>
               <Ionicons name="alert-circle-outline" size={32} color={colors.warn} />
               <Text style={s.error}>{phase.message}</Text>
-              <PrimaryButton label="Réessayer" variant="secondary" onPress={photo.current ? analyse : shoot} />
+              {phase.settings
+                ? <PrimaryButton label="Ouvrir les réglages" onPress={() => router.dismissTo('/reglages')} />
+                : <PrimaryButton label="Réessayer" variant="secondary" onPress={photo.current ? analyse : shoot} />}
             </>
           ) : phase.step === 'loading' ? (
             <>

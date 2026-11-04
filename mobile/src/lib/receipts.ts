@@ -1,9 +1,10 @@
-// Ticket de caisse : photo, envoi dans le stockage privé 'receipts', lecture par l'Edge Function parse-receipt.
-import { FunctionsHttpError, FunctionsRelayError } from '@supabase/supabase-js';
+// Ticket de caisse : photo, envoi dans le stockage privé 'receipts', lecture par appel direct du téléphone
+// à un service IA compatible OpenAI (réglé dans Réglages › Lecture des tickets).
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
+import { loadAiSettings } from './ai-settings';
 import type { CategoryRow, GroupRow } from './data';
-import type { ParsedReceipt } from './receipt';
+import { buildReceiptMessages, parseReceiptCompletion, type AiSettings, type ParsedReceipt } from './receipt';
 import { supabase } from './supabase';
 
 const MAX_SIDE = 1568; // assez pour lire un ticket, image légère à envoyer
@@ -45,28 +46,67 @@ export async function removeReceipt(path: string) {
   if (error) throw error;
 }
 
-/** Lit le ticket avec le modèle de vision (Edge Function, LiteLLM). Seules les catégories de dépense sont proposées. */
+export const MISSING_AI_SETTINGS = 'Configure la lecture des tickets dans Réglages.';
+
+/** Lit le ticket avec le modèle de vision du service IA réglé. Seules les catégories de dépense sont proposées. */
 export async function parseReceipt(base64: string, groups: GroupRow[], cats: CategoryRow[]): Promise<ParsedReceipt> {
+  const ai = await loadAiSettings();
+  if (!ai) throw new Error(MISSING_AI_SETTINGS);
   const groupName = new Map(groups.filter((g) => g.kind === 'depense').map((g) => [g.id, g.name]));
   const categories = cats.filter((c) => groupName.has(c.group_id))
     .map((c) => ({ id: c.id, name: c.name, group: groupName.get(c.group_id)! }));
 
-  const { data, error } = await supabase.functions.invoke<ParsedReceipt>('parse-receipt', {
-    body: { image_base64: base64, media_type: 'image/jpeg', categories },
+  const res = await call(ai, '/chat/completions', 120_000, {
+    method: 'POST',
+    body: JSON.stringify({
+      model: ai.model,
+      temperature: 0,
+      max_tokens: 8000, // large : un modèle qui « réfléchit » consomme des jetons avant le JSON
+      messages: buildReceiptMessages(categories, 'image/jpeg', base64),
+    }),
   });
-  if (error) throw new Error(await explain(error));
-  if (!data || !Array.isArray(data.lines)) throw new Error('Réponse illisible de la fonction parse-receipt.');
-  return data;
+  const json: unknown = await res.json().catch(() => {
+    throw new Error('Réponse du service IA illisible (JSON invalide).');
+  });
+  return parseReceiptCompletion(json, categories);
 }
 
-async function explain(error: unknown): Promise<string> {
-  if (error instanceof FunctionsHttpError) {
-    const res = error.context as Response;
-    const msg = await res.json().then((b: { error?: string }) => b.error ?? '', () => '');
-    if (res.status === 404) return 'La fonction parse-receipt n’est pas déployée sur Supabase.';
-    if (msg.includes('LLM_')) return 'Les secrets LLM_BASE_URL / LLM_API_KEY ne sont pas configurés côté Supabase.';
-    return `Lecture du ticket impossible (${res.status})${msg ? ` : ${msg}` : ''}.`;
+/** Vérifie l'URL et la clé (GET /models) et, si la liste le permet, la présence du modèle. */
+export async function testAiSettings(s: AiSettings): Promise<{ ok: boolean; message: string }> {
+  try {
+    const res = await call(s, '/models', 20_000, { method: 'GET' });
+    const body: { data?: { id?: unknown }[] } = await res.json().catch(() => ({}));
+    if (!Array.isArray(body.data)) return { ok: true, message: 'Connexion réussie.' };
+    const n = body.data.length;
+    return body.data.some((m) => m?.id === s.model)
+      ? { ok: true, message: `Connexion réussie, modèle « ${s.model} » disponible.` }
+      : { ok: false, message: `Connexion réussie, mais le modèle « ${s.model} » n’est pas dans la liste du service (${n} modèle${n > 1 ? 's' : ''}).` };
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
   }
-  if (error instanceof FunctionsRelayError) return 'La fonction parse-receipt est injoignable (pas déployée ?).';
-  return 'Pas de connexion au serveur : vérifie ta connexion et réessaie.';
+}
+
+/** Appel au service IA avec délai maximal ; toute erreur devient un message en français. */
+async function call(ai: AiSettings, path: string, timeoutMs: number, init: RequestInit): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(`${ai.baseUrl}${path}`, {
+      ...init,
+      signal: ctrl.signal,
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${ai.apiKey}` },
+    });
+  } catch {
+    throw new Error(ctrl.signal.aborted
+      ? `Le service IA n’a pas répondu à temps (${timeoutMs / 1000} s). Réessaie.`
+      : 'Service IA injoignable : vérifie ta connexion et l’URL (ou le VPN, si le service est sur un réseau privé).');
+  } finally {
+    clearTimeout(timer);
+  }
+  if (res.ok) return res;
+  if (res.status === 401 || res.status === 403) throw new Error('Clé API refusée par le service IA : vérifie-la dans Réglages.');
+  if (res.status === 404) throw new Error('URL ou modèle introuvable (404) : vérifie-les dans Réglages (l’URL se termine en général par /v1).');
+  const detail = (await res.text().catch(() => '')).slice(0, 200);
+  throw new Error(`Le service IA a répondu ${res.status}${detail ? ` : ${detail}` : ''}`);
 }

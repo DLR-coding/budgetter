@@ -3,10 +3,13 @@ import { router, useFocusEffect } from 'expo-router';
 import { Fragment, useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AiSettingsSheet } from '../../src/components/AiSettingsSheet';
 import { CategoryEditSheet } from '../../src/components/CategoryEditSheet';
 import { Card, Divider, ListRow, SectionTitle } from '../../src/components/ui';
+import { loadAiSettings } from '../../src/lib/ai-settings';
 import { formatEuros } from '../../src/lib/budget';
 import { loadCategories, loadRecurrences, type CategoryRow, type GroupRow, type RecurrenceRow } from '../../src/lib/data';
+import { aiSettingsSummary, type AiSettings } from '../../src/lib/receipt';
 import { dayLabel, groupValue } from '../../src/lib/settings';
 import { colors, font } from '../../src/theme';
 
@@ -19,6 +22,9 @@ export default function SettingsScreen() {
   const [recs, setRecs] = useState<RecurrenceRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [ai, setAi] = useState<AiSettings | null>(null);
+  const [editingAi, setEditingAi] = useState(false);
+  const loadAi = useCallback(() => { loadAiSettings().then(setAi, () => setAi(null)); }, []);
 
   const load = useCallback(async () => {
     try {
@@ -32,7 +38,7 @@ export default function SettingsScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(); loadAi(); }, [load, loadAi]));
 
   // Les plus grosses charges actives d'abord, comme sur la maquette.
   const top = recs.filter((r) => r.active).sort((a, b) => b.amount_cents - a.amount_cents).slice(0, SHOWN);
@@ -71,12 +77,18 @@ export default function SettingsScreen() {
         </Pressable>
       </Card>
 
+      <SectionTitle title="Lecture des tickets" />
+      <Card>
+        <ListRow label="Service IA" sublabel={aiSettingsSummary(ai)} chevron onPress={() => setEditingAi(true)} />
+      </Card>
+
       <SectionTitle title="Données" />
       <Card style={{ opacity: 0.6 }}>
         <ListRow label="Exporter en Excel" value="Bientôt" valueTone="muted" chevron />
       </Card>
 
       <CategoryEditSheet visible={adding} groups={groups} category={null} onClose={() => setAdding(false)} onSaved={load} />
+      <AiSettingsSheet visible={editingAi} current={ai} onClose={() => setEditingAi(false)} onSaved={loadAi} />
     </ScrollView>
   );
 }

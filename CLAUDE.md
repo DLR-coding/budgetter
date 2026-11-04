@@ -12,9 +12,9 @@ Toute l'interface est en français.
   (ex. `src/components/GlassTabBar.tsx`). Plus tard possiblement avec React Native Skia.
 - **Supabase** (Postgres + Auth + Storage). Schéma : `supabase/migrations/`.
   Toute modification de schéma = nouvelle migration numérotée, jamais d'édition de `0001`.
-- **Edge Function `supabase/functions/parse-receipt`** : lecture de tickets par un modèle de vision servi par
-  LiteLLM (API compatible OpenAI ; secrets `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`).
-  La clé API reste côté serveur.
+- **Lecture de tickets** : appel direct du téléphone à un service IA compatible OpenAI (URL `…/v1`, clé, modèle)
+  configuré dans Réglages (`src/lib/receipts.ts`, logique pure dans `src/lib/receipt.ts`). Clé dans
+  `expo-secure-store` (`src/lib/ai-settings.ts`), jamais en base ni dans le code.
 
 ## Design
 
@@ -65,7 +65,7 @@ dépendance à React ni Supabase, et la couvrir de tests.
 - [ ] Étape 1 : saisie rapide complète (pavé numérique, mode plusieurs articles),
       écran Saisies (liste par jour, recherche, filtres), détail d’une saisie (modifier/supprimer)
 - [ ] Étape 2 : Réglages (catégories, prévus, récurrences), Ajuster le solde, écran Projection
-- [ ] Étape 3 : scan de ticket (photo → Edge Function → écran de validation)
+- [ ] Étape 3 : scan de ticket (photo → service IA → écran de validation)
 - [ ] V1 : import de l’historique Excel, mémorisation des catégories par commerçant
 
 ## Commandes (dans `mobile/`)

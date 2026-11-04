@@ -9,15 +9,13 @@ prévu vs réel par catégorie, charges récurrentes, et « jusqu'à quand je ti
 |---|---|
 | **Expo (React Native) + Expo Router** | L'appli Android. Installée en APK directement sur le téléphone. |
 | **Supabase** (Postgres + Auth + Storage) | Base de données, sauvegarde, photos des tickets. Offre gratuite suffisante. |
-| **Supabase Edge Function `parse-receipt`** | Envoie la photo du ticket à LiteLLM. La clé API reste côté serveur. |
-| **LiteLLM (modèle de vision, ex. Qwen3.5)** | Lit le ticket et classe chaque article dans tes catégories. |
+| **Service IA compatible OpenAI** (LiteLLM, OpenAI…, modèle de vision ex. Qwen3.5) | Lit le ticket et classe chaque article dans tes catégories. Appelé directement par le téléphone ; URL, clé et modèle se règlent dans l'appli (clé chiffrée sur le téléphone). |
 
 ## Contenu
 
 ```
 supabase/
   migrations/0001_init.sql        schéma, sécurité RLS, catégories de l'Excel, récurrences
-  functions/parse-receipt/        lecture des tickets par LiteLLM (étape 3)
 mobile/
   app/                            écrans (Expo Router)
     _layout.tsx                   connexion + premier lancement
@@ -29,6 +27,9 @@ mobile/
   src/lib/*.test.ts               tests de la logique (`npm test`)
   src/lib/budget.ts               prévu / réel, soldes, projection
   src/lib/data.ts                 lecture / écriture Supabase
+  src/lib/receipt.ts              ticket : requête et réponse du service IA, validation des réglages
+  src/lib/receipts.ts             ticket : photo, stockage, appel au service IA
+  src/lib/ai-settings.ts          réglages du service IA (expo-secure-store)
   src/components/GlassTabBar.tsx  navbar en verre + bouton « + »
   src/theme.ts                    couleurs et typo des maquettes
 ```
@@ -69,11 +70,12 @@ eas build -p android --profile preview
 ```
 EAS te donne un lien vers un fichier `.apk` à installer sur le téléphone.
 
-### 5. Lecture des tickets (étape 3)
-```bash
-npx supabase secrets set LLM_BASE_URL=https://<proxy-litellm> LLM_API_KEY=<clé> LLM_MODEL=Qwen/Qwen3.5-35B-A3B
-npx supabase functions deploy parse-receipt
-```
+### 5. Lecture des tickets
+Rien à déployer : dans l'appli, **Réglages → Lecture des tickets → Service IA**, renseigne
+l'URL du service compatible OpenAI (avec `/v1`, ex. `https://litellm.exemple.fr/v1` ou
+`https://api.openai.com/v1`, `https://` obligatoire), la clé API et un modèle de vision
+(ex. `Qwen/Qwen3.5-35B-A3B`), puis **Tester** et **Enregistrer**. La clé reste sur le téléphone
+(stockage chiffré). Si le service est sur un réseau privé, le téléphone doit y avoir accès (VPN).
 
 ### Vérifier (dans `mobile/`)
 ```bash

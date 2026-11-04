@@ -34,7 +34,8 @@
           "cameraPermission": "Budget utilise l’appareil photo pour lire tes tickets de caisse.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
