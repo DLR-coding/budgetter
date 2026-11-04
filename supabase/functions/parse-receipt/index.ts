@@ -1,15 +1,17 @@
-// Supabase Edge Function : lit une photo de ticket avec Claude et renvoie
-// les lignes catégorisées. La clé API reste ici, jamais dans l'appli.
+// Supabase Edge Function : lit une photo de ticket avec un modèle de vision servi par LiteLLM
+// (API compatible OpenAI) et renvoie les lignes catégorisées. La clé API reste ici, jamais dans l'appli.
 // Appelée uniquement par l'appli mobile (pas de CORS) ; le JWT Supabase est vérifié par défaut.
 //
 // Entrée  (POST JSON) : { image_base64, media_type, categories: [{ id, name, group }] }
 // Sortie  (JSON)      : { merchant, date, total_cents, matches_total, lines: [{ raw_label, label,
 //                         quantity, unit_price_cents, category_id, confident }] }
-// Erreurs (JSON)      : { error } avec 400 (requête), 413 (image trop lourde), 500 (configuration), 502 (Claude).
+// Erreurs (JSON)      : { error } avec 400 (requête), 413 (image trop lourde), 500 (configuration), 502 (modèle).
 
-const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
-const MODEL = Deno.env.get('CLAUDE_MODEL') ?? 'claude-sonnet-5-5';
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // limite de l'API Claude par image
+// Secrets Supabase : LLM_BASE_URL (ex. https://litellm.exemple.fr, sans /v1), LLM_API_KEY, LLM_MODEL.
+const LLM_BASE_URL = Deno.env.get('LLM_BASE_URL')?.replace(/\/+$/, '').replace(/\/v1$/, '');
+const LLM_API_KEY = Deno.env.get('LLM_API_KEY');
+const MODEL = Deno.env.get('LLM_MODEL') ?? 'Qwen/Qwen3.5-35B-A3B';
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // garde-fou : l'appli envoie ~1568 px en JPEG, bien en dessous
 const MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 type Cat = { id: string; name: string; group: string };
@@ -58,7 +60,7 @@ Deno.serve(async (req) => {
 
 async function handle(req: Request): Promise<Response> {
   if (req.method !== 'POST') return fail(405, 'POST attendu');
-  if (!ANTHROPIC_API_KEY) return fail(500, 'Secret ANTHROPIC_API_KEY manquant');
+  if (!LLM_BASE_URL || !LLM_API_KEY) return fail(500, 'Secrets LLM_BASE_URL et LLM_API_KEY requis');
 
   let body: unknown;
   try {
@@ -79,49 +81,51 @@ async function handle(req: Request): Promise<Response> {
 
   let res: Response;
   try {
-    res = await fetch('https://api.anthropic.com/v1/messages', {
+    res = await fetch(`${LLM_BASE_URL}/v1/chat/completions`, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${LLM_API_KEY}` },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 4000,
-        system: systemPrompt(cats),
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type, data: image_base64 } },
-            { type: 'text', text: 'Voici le ticket.' },
-          ],
-        }],
+        max_tokens: 8000, // large : un modèle qui « réfléchit » consomme des jetons avant le JSON
+        temperature: 0,
+        messages: [
+          { role: 'system', content: systemPrompt(cats) },
+          {
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: `data:${media_type};base64,${image_base64}` } },
+              { type: 'text', text: 'Voici le ticket.' },
+            ],
+          },
+        ],
       }),
     });
   } catch (e) {
-    return fail(502, 'API Claude injoignable', (e as Error).message);
+    return fail(502, 'Serveur LiteLLM injoignable', (e as Error).message);
   }
-  if (!res.ok) return fail(502, `API Claude ${res.status}`, await res.text());
+  if (!res.ok) return fail(502, `LiteLLM ${res.status}`, (await res.text()).slice(0, 500));
 
-  let data: { stop_reason?: string; content?: unknown };
+  let data: { choices?: { finish_reason?: string; message?: { content?: unknown } }[] };
   try {
     data = await res.json();
   } catch {
-    return fail(502, 'Réponse de l’API Claude illisible (JSON invalide)');
+    return fail(502, 'Réponse de LiteLLM illisible (JSON invalide)');
   }
-  if (data.stop_reason === 'max_tokens') return fail(502, 'Ticket trop long : réponse de Claude tronquée');
-  const text: string = (Array.isArray(data.content) ? data.content : []).filter((b: { type: string }) => b.type === 'text')
-    .map((b: { text: string }) => b.text).join('');
+  const choice = data.choices?.[0];
+  if (choice?.finish_reason === 'length') return fail(502, 'Ticket trop long : réponse du modèle tronquée');
+  const content = choice?.message?.content;
+  const raw = typeof content === 'string' ? content
+    : (Array.isArray(content) ? content : []).map((b: { text?: string }) => b?.text ?? '').join('');
+  const text = raw.replace(/<think>[\s\S]*?<\/think>/g, ''); // modèles qui « réfléchissent » (Qwen3.5…)
 
   // Le modèle doit renvoyer un objet JSON seul ; on tolère du texte ou des balises autour.
   let parsed: unknown;
   try {
     parsed = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
   } catch {
-    return fail(502, 'Réponse de Claude illisible (JSON invalide)', text.slice(0, 500));
+    return fail(502, 'Réponse du modèle illisible (JSON invalide)', text.slice(0, 500));
   }
-  if (!isObject(parsed)) return fail(502, 'Réponse de Claude illisible (objet JSON attendu)', text.slice(0, 500));
+  if (!isObject(parsed)) return fail(502, 'Réponse du modèle illisible (objet JSON attendu)', text.slice(0, 500));
 
   // Garde-fous : on ne fait pas confiance aveuglément à la sortie du modèle.
   const validIds = new Set(cats.map((c) => c.id));

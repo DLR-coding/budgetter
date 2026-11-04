@@ -12,7 +12,8 @@ Toute l'interface est en français.
   (ex. `src/components/GlassTabBar.tsx`). Plus tard possiblement avec React Native Skia.
 - **Supabase** (Postgres + Auth + Storage). Schéma : `supabase/migrations/`.
   Toute modification de schéma = nouvelle migration numérotée, jamais d'édition de `0001`.
-- **Edge Function `supabase/functions/parse-receipt`** : lecture de tickets via l'API Claude.
+- **Edge Function `supabase/functions/parse-receipt`** : lecture de tickets par un modèle de vision servi par
+  LiteLLM (API compatible OpenAI ; secrets `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`).
   La clé API reste côté serveur.
 
 ## Design

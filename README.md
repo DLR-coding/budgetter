@@ -9,15 +9,15 @@ prévu vs réel par catégorie, charges récurrentes, et « jusqu'à quand je ti
 |---|---|
 | **Expo (React Native) + Expo Router** | L'appli Android. Installée en APK directement sur le téléphone. |
 | **Supabase** (Postgres + Auth + Storage) | Base de données, sauvegarde, photos des tickets. Offre gratuite suffisante. |
-| **Supabase Edge Function `parse-receipt`** | Appelle Claude pour lire un ticket. La clé API reste côté serveur. |
-| **API Claude (vision)** | Lit le ticket et classe chaque article dans tes catégories. |
+| **Supabase Edge Function `parse-receipt`** | Envoie la photo du ticket à LiteLLM. La clé API reste côté serveur. |
+| **LiteLLM (modèle de vision, ex. Qwen3.5)** | Lit le ticket et classe chaque article dans tes catégories. |
 
 ## Contenu
 
 ```
 supabase/
   migrations/0001_init.sql        schéma, sécurité RLS, catégories de l'Excel, récurrences
-  functions/parse-receipt/        lecture des tickets par Claude (étape 3)
+  functions/parse-receipt/        lecture des tickets par LiteLLM (étape 3)
 mobile/
   app/                            écrans (Expo Router)
     _layout.tsx                   connexion + premier lancement
@@ -71,8 +71,8 @@ EAS te donne un lien vers un fichier `.apk` à installer sur le téléphone.
 
 ### 5. Lecture des tickets (étape 3)
 ```bash
+npx supabase secrets set LLM_BASE_URL=https://<proxy-litellm> LLM_API_KEY=<clé> LLM_MODEL=Qwen/Qwen3.5-35B-A3B
 npx supabase functions deploy parse-receipt
-npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ### Vérifier (dans `mobile/`)

@@ -28,9 +28,6 @@ function dayLabel(d: Date) {
 }
 
 // Saisie rapide (maquette 3a) : pavé numérique, montant simple ou formule « 12+2+5×2,99 ».
-// Scan de ticket mis de côté : la fonction parse-receipt n’est pas encore déployée.
-const SCAN_ENABLED = false;
-
 export default function Saisie() {
   const insets = useSafeAreaInsets();
   const [input, setInput] = useState('');
@@ -121,12 +118,10 @@ export default function Saisie() {
             </Pressable>
           ))}
         </View>
-        {SCAN_ENABLED ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Scanner un ticket"
-            onPress={() => router.push('/ticket')} style={s.circle}>
-            <Ionicons name="scan-outline" size={22} color={colors.accentText} />
-          </Pressable>
-        ) : <View style={{ width: 46 }} />}
+        <Pressable accessibilityRole="button" accessibilityLabel="Scanner un ticket"
+          onPress={() => router.push('/ticket')} style={s.circle}>
+          <Ionicons name="scan-outline" size={22} color={colors.accentText} />
+        </Pressable>
       </View>
 
       <View style={s.middle}>

@@ -6,7 +6,7 @@ import type { CategoryRow, GroupRow } from './data';
 import type { ParsedReceipt } from './receipt';
 import { supabase } from './supabase';
 
-const MAX_SIDE = 1568; // au-delà, l'API Claude réduit l'image elle-même : inutile d'envoyer plus
+const MAX_SIDE = 1568; // assez pour lire un ticket, image légère à envoyer
 
 export type ReceiptPhoto = { uri: string; base64: string };
 
@@ -45,7 +45,7 @@ export async function removeReceipt(path: string) {
   if (error) throw error;
 }
 
-/** Lit le ticket avec Claude (Edge Function). Seules les catégories de dépense sont proposées. */
+/** Lit le ticket avec le modèle de vision (Edge Function, LiteLLM). Seules les catégories de dépense sont proposées. */
 export async function parseReceipt(base64: string, groups: GroupRow[], cats: CategoryRow[]): Promise<ParsedReceipt> {
   const groupName = new Map(groups.filter((g) => g.kind === 'depense').map((g) => [g.id, g.name]));
   const categories = cats.filter((c) => groupName.has(c.group_id))
@@ -64,7 +64,7 @@ async function explain(error: unknown): Promise<string> {
     const res = error.context as Response;
     const msg = await res.json().then((b: { error?: string }) => b.error ?? '', () => '');
     if (res.status === 404) return 'La fonction parse-receipt n’est pas déployée sur Supabase.';
-    if (msg.includes('ANTHROPIC_API_KEY')) return 'La clé ANTHROPIC_API_KEY n’est pas configurée côté Supabase.';
+    if (msg.includes('LLM_')) return 'Les secrets LLM_BASE_URL / LLM_API_KEY ne sont pas configurés côté Supabase.';
     return `Lecture du ticket impossible (${res.status})${msg ? ` : ${msg}` : ''}.`;
   }
   if (error instanceof FunctionsRelayError) return 'La fonction parse-receipt est injoignable (pas déployée ?).';
