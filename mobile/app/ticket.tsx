@@ -91,11 +91,13 @@ export default function Ticket() {
     setSaveError(null);
     kept.current = true; // pendant l'enregistrement, quitter l'écran ne doit pas effacer la photo
     try {
+      const date = receiptDate(receipt.date);
       await saveEntry({
         source: 'ticket', receiptPath: path.current, merchant: receipt.merchant ?? undefined,
-        date: receiptDate(receipt.date), lines: toSaveLines(receipt.lines),
+        date, lines: toSaveLines(receipt.lines),
       });
-      router.dismissTo('/');
+      // Le ticket peut dater d'un autre mois : on ouvre ce mois-là, sinon la dépense semble absente.
+      router.dismissTo({ pathname: '/', params: { month: date.slice(0, 7), at: String(Date.now()) } });
     } catch (e) {
       kept.current = false;
       if (left.current) drop();
