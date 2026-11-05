@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { addMonths, monthOf, plannedFor, summarizeMonths, runway, formatEuros,
   formatAmount, splitEuros, monthLabel, parseSignedCents, tintFor, computedStartCents, groupBreakdown,
   collapseRows, shortMonthLabel, endOfMonthLabel, projectionLabels, runwayHeadline, balanceStartMonth,
-  isPlannedCounted, categoryCounted } from './budget.ts';
+  isPlannedCounted, categoryCounted, kindBreakdown } from './budget.ts';
 import type { ActualLine, Adjustment, MonthSetting, PlannedOverride } from './budget.ts';
 import type { Category, MonthSummary } from './budget.ts';
 
@@ -405,5 +405,39 @@ describe('formatEuros', () => {
     assert.equal(formatEuros(-1250), '−12,50 €');
     assert.equal(formatEuros(1250, true), '+12,50 €');
     assert.equal(formatEuros(0, true), '0,00 €');
+  });
+});
+
+describe('kindBreakdown', () => {
+  const paie: Category = { id: 'paie', kind: 'revenu', defaultPlannedCents: 100000 };
+  const loyer: Category = { id: 'loyer', kind: 'depense', defaultPlannedCents: 56500 };
+  const bouffe: Category = { id: 'bouffe', kind: 'depense', defaultPlannedCents: 4000 };
+  const vide: Category = { id: 'vide', kind: 'depense', defaultPlannedCents: 0 };
+  const base = {
+    month: '2026-11', currentMonth: '2026-11',
+    groups: [{ id: 'rev', name: 'Revenus', kind: 'revenu' as const }, { id: 'fix', name: 'Fixes', kind: 'depense' as const },
+      { id: 'var', name: 'Variables', kind: 'depense' as const }],
+    cats: [{ id: 'paie', group_id: 'rev', name: 'Paie' }, { id: 'loyer', group_id: 'fix', name: 'Loyer' },
+      { id: 'bouffe', group_id: 'var', name: 'Nourriture' }, { id: 'vide', group_id: 'var', name: 'Vide' }],
+    categories: [paie, loyer, bouffe, vide],
+    overrides: [], monthSettings: [],
+    actuals: [{ categoryId: 'loyer', month: '2026-11', amountCents: 56500, exceptional: false },
+      { categoryId: 'bouffe', month: '2026-11', amountCents: 5500, exceptional: false }],
+  };
+
+  test('compté par catégorie, total égal à celui de summarizeMonths', () => {
+    const res = kindBreakdown({ ...base, kind: 'depense' });
+    assert.deepEqual(res.map((g) => g.id), ['fix', 'var']);
+    const b = res[1].categories;
+    assert.deepEqual(b.map((c) => c.id), ['bouffe']); // 0 / 0 omise
+    assert.equal(b[0].countsPlanned, false); // dépassé : le réel compte
+    assert.equal(b[0].countedCents, 5500);
+    const [nov] = summarizeMonths({ months: ['2026-11'], ...base, adjustments: [] });
+    assert.equal(res.reduce((s, g) => s + g.countedCents, 0), nov.expenseCents);
+  });
+
+  test('revenus : groupes de revenu seulement, prévu compté', () => {
+    const res = kindBreakdown({ ...base, kind: 'revenu' });
+    assert.deepEqual(res.map((g) => [g.id, g.countedCents]), [['rev', 100000]]);
   });
 });

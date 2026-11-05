@@ -77,6 +77,24 @@ export function isPlannedCounted(
   return all && categoryCounted(cat, month, overrides, actualCents).on;
 }
 
+export type CategoryAmounts = {
+  plannedCents: number; actualCents: number; actualNoExcCents: number;
+  countedCents: number; countsPlanned: boolean; // ce qui entre dans le solde, et s'il s'agit du prévu
+};
+
+/** Montants d'une catégorie pour un mois : la seule règle « prévu ou réel », partagée par tous les écrans. */
+export function categoryAmounts(
+  cat: Category, month: Month, currentMonth: Month,
+  data: { overrides: PlannedOverride[]; monthSettings: MonthSetting[]; actuals: ActualLine[] },
+): CategoryAmounts {
+  const plannedCents = plannedFor(cat, month, data.overrides);
+  const lines = data.actuals.filter((a) => a.categoryId === cat.id && a.month === month);
+  const actualCents = lines.reduce((s, l) => s + l.amountCents, 0);
+  const actualNoExcCents = lines.filter((l) => !l.exceptional).reduce((s, l) => s + l.amountCents, 0);
+  const countsPlanned = month >= currentMonth && isPlannedCounted(cat, month, data.overrides, data.monthSettings, actualCents);
+  return { plannedCents, actualCents, actualNoExcCents, countedCents: countsPlanned ? plannedCents : actualCents, countsPlanned };
+}
+
 export function summarizeMonths(params: {
   months: Month[];               // dans l'ordre chronologique, sans trou
   currentMonth: Month;
@@ -100,11 +118,8 @@ export function summarizeMonths(params: {
     let plannedIncome = 0, plannedExpense = 0, actualIncome = 0, actualExpense = 0, actualExpenseNoExc = 0;
     for (const cat of categories) {
       if (cat.kind === 'epargne') continue;
-      const planned = plannedFor(cat, month, overrides);
-      const lines = actuals.filter((a) => a.categoryId === cat.id && a.month === month);
-      const actual = lines.reduce((s, l) => s + l.amountCents, 0);
-      const actualNoExc = lines.filter((l) => !l.exceptional).reduce((s, l) => s + l.amountCents, 0);
-      const counted = status !== 'passe' && isPlannedCounted(cat, month, overrides, monthSettings, actual) ? planned : actual;
+      const { plannedCents: planned, actualCents: actual, actualNoExcCents: actualNoExc, countedCents: counted } =
+        categoryAmounts(cat, month, currentMonth, { overrides, monthSettings, actuals });
       if (cat.kind === 'revenu') { plannedIncome += planned; actualIncome += actual; incomeCents += counted; }
       else { plannedExpense += planned; actualExpense += actual; actualExpenseNoExc += actualNoExc; expenseCents += counted; }
     }
@@ -225,6 +240,28 @@ export function groupBreakdown(params: {
       plannedCents: lines.reduce((s, c) => s + c.plannedCents, 0),
       actualCents: lines.reduce((s, c) => s + c.actualCents, 0),
     };
+  }).filter((g) => g.categories.length > 0);
+}
+
+export type KindCategoryLine = CategoryAmounts & { id: string; name: string };
+export type KindGroup = { id: string; name: string; countedCents: number; categories: KindCategoryLine[] };
+
+/** Écran Dépenses / Revenus d'un mois : chaque groupe du type, catégories avec prévu, réel et compté (0 / 0 omises). */
+export function kindBreakdown(params: {
+  month: Month; currentMonth: Month; kind: 'depense' | 'revenu';
+  groups: { id: string; name: string; kind: GroupKind }[];
+  cats: { id: string; group_id: string; name: string }[]; // dans l'ordre d'affichage
+  categories: Category[]; overrides: PlannedOverride[]; monthSettings: MonthSetting[]; actuals: ActualLine[];
+}): KindGroup[] {
+  const { month, currentMonth, kind, groups, cats, categories } = params;
+  return groups.filter((g) => g.kind === kind).map((g) => {
+    const lines = cats.filter((c) => c.group_id === g.id).flatMap((c) => {
+      const cat = categories.find((x) => x.id === c.id);
+      if (!cat) return [];
+      const a = categoryAmounts(cat, month, currentMonth, params);
+      return a.plannedCents || a.actualCents ? [{ id: c.id, name: c.name, ...a }] : [];
+    });
+    return { id: g.id, name: g.name, categories: lines, countedCents: lines.reduce((s, c) => s + c.countedCents, 0) };
   }).filter((g) => g.categories.length > 0);
 }
 

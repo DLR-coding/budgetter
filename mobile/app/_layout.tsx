@@ -54,6 +54,7 @@ export default function RootLayout() {
           <Stack.Screen name="categorie/[id]" />
           <Stack.Screen name="entree/[id]" />
           <Stack.Screen name="projection" />
+          <Stack.Screen name="flux/[kind]" />
           <Stack.Screen name="groupe/[id]" />
           <Stack.Screen name="recurrences" />
           <Stack.Screen name="ticket" options={{ presentation: 'modal' }} />

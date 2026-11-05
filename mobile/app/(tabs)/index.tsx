@@ -133,33 +133,43 @@ export default function MonthScreen() {
         {summary && (
           <View style={s.row2}>
             <View style={[s.card, s.flowCard]}>
-              <View style={s.flowHead}>
-                <View style={[s.flowIcon, { backgroundColor: colors.incomeBg }]}>
-                  <Ionicons name="arrow-down" size={15} color={colors.income} style={s.rotate} />
+              {/* Toucher le haut du card : détail par catégorie et saisies ; l'interrupteur reste à part. */}
+              <Pressable accessibilityRole="button" accessibilityLabel={`Revenus de ${monthName(month)} : détail`}
+                onPress={() => router.push({ pathname: '/flux/[kind]', params: { kind: 'revenu', month } })}
+                style={({ pressed }) => [s.flowTap, pressed && { opacity: 0.6 }]}>
+                <View style={s.flowHead}>
+                  <View style={[s.flowIcon, { backgroundColor: colors.incomeBg }]}>
+                    <Ionicons name="arrow-down" size={15} color={colors.income} style={s.rotate} />
+                  </View>
+                  <Text style={s.flowLabel}>Revenus</Text>
                 </View>
-                <Text style={s.flowLabel}>Revenus</Text>
-              </View>
-              {/* Gros montant = ce qui compte dans le solde (« Revenu total » de l'Excel). */}
-              <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(summary.incomeCents, true)}</Text>
-              <Text style={s.flowPlanned}>
-                {formatAmount(summary.actualIncomeCents)} reçus · {formatAmount(summary.plannedIncomeCents)} prévus
-              </Text>
+                {/* Gros montant = ce qui compte dans le solde (« Revenu total » de l'Excel). */}
+                <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(summary.incomeCents, true)}</Text>
+                <Text style={s.flowPlanned}>
+                  {formatAmount(summary.actualIncomeCents)} reçus · {formatAmount(summary.plannedIncomeCents)} prévus
+                </Text>
+              </Pressable>
               {summary.status !== 'passe' && (
                 <CountedSwitch value={counted('revenu')} label="Compter le prévu des revenus"
                   onChange={(on) => toggleCounted('revenu', on)} />
               )}
             </View>
             <View style={[s.card, s.flowCard]}>
-              <View style={s.flowHead}>
-                <View style={[s.flowIcon, { backgroundColor: colors.warnBg }]}>
-                  <Ionicons name="arrow-up" size={15} color={colors.warn} style={s.rotate} />
+              {/* Toucher le haut du card : détail par catégorie et saisies ; l'interrupteur reste à part. */}
+              <Pressable accessibilityRole="button" accessibilityLabel={`Dépenses de ${monthName(month)} : détail`}
+                onPress={() => router.push({ pathname: '/flux/[kind]', params: { kind: 'depense', month } })}
+                style={({ pressed }) => [s.flowTap, pressed && { opacity: 0.6 }]}>
+                <View style={s.flowHead}>
+                  <View style={[s.flowIcon, { backgroundColor: colors.warnBg }]}>
+                    <Ionicons name="arrow-up" size={15} color={colors.warn} style={s.rotate} />
+                  </View>
+                  <Text style={s.flowLabel}>Dépenses</Text>
                 </View>
-                <Text style={s.flowLabel}>Dépenses</Text>
-              </View>
-              <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(-summary.expenseCents)}</Text>
-              <Text style={s.flowPlanned}>
-                {formatAmount(summary.actualExpenseCents)} dépensés · {formatAmount(summary.plannedExpenseCents)} prévus
-              </Text>
+                <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(-summary.expenseCents)}</Text>
+                <Text style={s.flowPlanned}>
+                  {formatAmount(summary.actualExpenseCents)} dépensés · {formatAmount(summary.plannedExpenseCents)} prévus
+                </Text>
+              </Pressable>
               {summary.status !== 'passe' && (
                 <CountedSwitch value={counted('depense')} label="Compter le prévu des dépenses"
                   onChange={(on) => toggleCounted('depense', on)} />
@@ -276,6 +286,7 @@ const s = StyleSheet.create({
 
   row2: { flexDirection: 'row', gap: 10 },
   flowCard: { flex: 1, padding: 16, gap: 8 },
+  flowTap: { gap: 8 },
   flowHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   flowIcon: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   rotate: { transform: [{ rotate: '45deg' }] },
