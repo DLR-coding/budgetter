@@ -26,12 +26,14 @@ export const colors = {
   warnBg: '#2E2216',
 };
 
-// Verre liquide (src/components/LiquidGlass.tsx) : teinte posée sur le flou, lentille, reflets.
+// Verre liquide (src/components/LiquidGlass.tsx). Teintes : opacité de la couleur posée
+// sur ce que le verre transmet (0 = verre clair).
 export const glass = {
-  fill: 'rgba(32,44,62,0.45)',    // teinte bleu nuit sur le flou natif
-  lens: 'rgba(255,255,255,0.10)', // lentille de l'onglet actif
-  rim: '#FFFFFF',                 // reflet de lumière sur les bords
-  activeInk: '#FFFFFF',           // icône et libellé de l'onglet actif
+  fill: 'rgba(32,44,62,0.92)', // repli de la barre tant que la capture n'est pas prête
+  barTint: 0.35,               // barre : voile de colors.bg, pour la lisibilité des onglets
+  lensTint: 0.16,              // lentille de l'onglet actif : voile clair (colors.text)
+  fabTint: 0.75,               // bouton « + » : verre teinté colors.accent
+  activeInk: '#FFFFFF',        // icône et libellé de l'onglet actif
 };
 
 export const radius = { card: 22, pill: 999, key: 18 };

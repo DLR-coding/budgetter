@@ -9,8 +9,11 @@ Toute l'interface est en français.
 - **Styles : `StyleSheet.create` + jetons de `mobile/src/theme.ts`.** Pas de NativeWind,
   pas de couleur en dur dans les écrans : toujours `colors.*`, `radius.*`, `font.*`.
 - Les effets visuels spéciaux (verre, etc.) vivent dans des composants isolés
-  (ex. `src/components/GlassTabBar.tsx`). Verre liquide en React Native Skia : shaders SDF dans
-  `src/components/LiquidGlass.tsx` ; Skia ne réfracte que ce qu’il dessine, le flou natif reste `expo-blur`.
+  (ex. `src/components/GlassTabBar.tsx`). Verre liquide : **React Native Skia v3** (paquet
+  `react-native-skia`, plus `@shopify/react-native-skia`), shader dans `src/components/LiquidGlass.tsx`
+  (modèle V2 de webgl-apple-liquid-glass, MIT). Skia ne voit pas les vues natives : chaque onglet est
+  une vue capturable (`GlassScene`) et la barre recapture en direct la bande d’écran derrière elle avec
+  `react-native-webgpu` (`src/components/GlassBackdrop.tsx`).
 - **Supabase** (Postgres + Auth + Storage). Schéma : `supabase/migrations/`.
   Toute modification de schéma = nouvelle migration numérotée, jamais d'édition de `0001`.
 - **Lecture de tickets** : appel direct du téléphone à un service IA compatible OpenAI (URL `…/v1`, clé, modèle)
@@ -81,8 +84,10 @@ dépendance à React ni Supabase, et la couvrir de tests.
 
 ## Environnement
 
-- Développement sous **WSL (Debian)**. Le téléphone Android utilise Expo Go :
-  lancer avec `npx expo start --tunnel` (le réseau WSL n’est pas joignable directement).
+- Développement sous **WSL (Debian)**. Skia v3 ne tourne pas dans Expo Go : le téléphone utilise
+  un **build de développement** (`eas build --profile development --platform android`, à refaire
+  à chaque ajout de code natif), lancé avec `npx expo start --dev-client --tunnel`
+  (le réseau WSL n’est pas joignable directement). Android 8 (API 26) minimum, Vulkan requis.
 - Variables dans `mobile/.env` (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`).
   Ne jamais committer `.env`.
 
