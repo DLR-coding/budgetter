@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategorySheet } from '../src/components/CategorySheet';
+import { BottomSheet } from '../src/components/ui';
 import { formatEuros } from '../src/lib/budget';
 import { loadCategories, saveEntry, topCategoryIds, type CategoryRow, type GroupRow } from '../src/lib/data';
 import { isFormula, parseFormula } from '../src/lib/formula';
@@ -32,6 +33,7 @@ function dayLabel(d: Date) {
 export default function Saisie() {
   const insets = useSafeAreaInsets();
   const [input, setInput] = useState('');
+  const [scanMenu, setScanMenu] = useState(false);
   const [kind, setKind] = useState<Kind>('depense');
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [cats, setCats] = useState<CategoryRow[]>([]);
@@ -122,7 +124,7 @@ export default function Saisie() {
           ))}
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="Scanner un ticket"
-          onPress={() => router.push('/ticket')} style={s.circle}>
+          onPress={() => setScanMenu(true)} style={s.circle}>
           <Ionicons name="scan-outline" size={22} color={colors.accentText} />
         </Pressable>
       </View>
@@ -231,6 +233,21 @@ export default function Saisie() {
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
+
+      <BottomSheet visible={scanMenu} onClose={() => setScanMenu(false)} title="Ticket">
+        <View style={{ gap: 6 }}>
+          {([['camera', 'camera-outline', 'Prendre une photo'], ['library', 'images-outline', 'Choisir une image']] as const)
+            .map(([source, icon, label]) => (
+              <Pressable key={source} style={s.option} accessibilityRole="button" onPress={() => {
+                setScanMenu(false);
+                router.push({ pathname: '/ticket', params: { source } });
+              }}>
+                <Ionicons name={icon} size={18} color={colors.text} />
+                <Text style={s.optionText}>{label}</Text>
+              </Pressable>
+            ))}
+        </View>
+      </BottomSheet>
     </View>
   );
 }
@@ -238,6 +255,11 @@ export default function Saisie() {
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 16, gap: 10 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  option: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 50, paddingHorizontal: 14,
+    borderRadius: 14, backgroundColor: colors.surface2,
+  },
+  optionText: { flex: 1, color: colors.text, fontFamily: font.regular, fontSize: 15 },
   circle: { width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   disabled: { opacity: 0.4 },
   segment: { flexDirection: 'row', padding: 4, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },

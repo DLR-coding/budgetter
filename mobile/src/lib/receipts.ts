@@ -11,12 +11,16 @@ const MAX_SIDE = 1568; // assez pour lire un ticket, image légère à envoyer
 
 export type ReceiptPhoto = { uri: string; base64: string };
 
-/** Ouvre l'appareil photo. null si l'utilisateur annule ; erreur si la permission est refusée. */
-export async function takeReceiptPhoto(): Promise<ReceiptPhoto | null> {
-  const perm = await ImagePicker.requestCameraPermissionsAsync();
-  if (!perm.granted) throw new Error('L’accès à l’appareil photo est refusé. Autorise-le dans les réglages d’Android.');
-
-  const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+/** Ouvre l'appareil photo, ou la galerie. null si l'utilisateur annule ; erreur si l'appareil photo est refusé. */
+export async function takeReceiptPhoto(source: 'camera' | 'library' = 'camera'): Promise<ReceiptPhoto | null> {
+  if (source === 'camera') {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) throw new Error('L’accès à l’appareil photo est refusé. Autorise-le dans les réglages d’Android.');
+  }
+  // La galerie passe par le sélecteur de photos d'Android : pas de permission à demander.
+  const shot = source === 'camera'
+    ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
+    : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
   if (shot.canceled || !shot.assets?.[0]) return null;
   const { uri, width, height } = shot.assets[0];
 

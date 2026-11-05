@@ -1,6 +1,6 @@
 // Maquette 4 · Validation du ticket : photo → lecture par le service IA → vérification des lignes → saisie.
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -22,6 +22,7 @@ import { haptics } from '../src/lib/haptics';
 type Phase = { step: 'photo' } | { step: 'loading' } | { step: 'error'; message: string; settings?: boolean } | { step: 'ready' };
 
 export default function Ticket() {
+  const { source } = useLocalSearchParams<{ source?: string }>(); // 'library' : image de la galerie
   const insets = useSafeAreaInsets();
   const photo = useRef<string | null>(null);   // base64 du JPEG réduit
   const path = useRef<string | null>(null);    // chemin dans le bucket 'receipts', une fois envoyé
@@ -68,7 +69,7 @@ export default function Ticket() {
     try {
       // Sans service IA réglé, inutile de prendre la photo.
       if (!(await loadAiSettings())) return setPhase({ step: 'error', message: MISSING_AI_SETTINGS, settings: true });
-      const shot = await takeReceiptPhoto();
+      const shot = await takeReceiptPhoto(source === 'library' ? 'library' : 'camera');
       if (!shot) return router.back();
       photo.current = shot.base64;
       await analyse();
