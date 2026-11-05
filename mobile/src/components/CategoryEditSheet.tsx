@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { formatAmount } from '../lib/budget';
 import { createCategory, updateCategory, type CategoryRow, type GroupRow } from '../lib/data';
 import { parsePlannedCents } from '../lib/settings';
+import { haptics } from '../lib/haptics';
 import { colors, font, radius } from '../theme';
 import { BottomSheet, CategoryPill, PrimaryButton } from './ui';
 
@@ -35,9 +36,11 @@ export function CategoryEditSheet({ visible, groups, category, defaultGroupId, o
     setBusy(true);
     try {
       await action();
+      haptics.success();
       onSaved();
       onClose();
     } catch (e) {
+      haptics.warning();
       setError((e as Error).message);
     } finally {
       setBusy(false);

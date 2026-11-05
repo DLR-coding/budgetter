@@ -107,16 +107,18 @@ export default function CategoryScreen() {
   const run = async (action: () => Promise<void>) => {
     try {
       await action();
+      haptics.success();
       setMenu('closed');
       await load();
     } catch (e) {
+      haptics.warning();
       setError((e as Error).message);
       setMenu('closed');
     }
   };
   const newCents = parsePriceCents(amount);
   const toggleCounted = async (on: boolean) => {
-    haptics.tap();
+    haptics.toggle(on);
     setPendingCounted(on);
     try {
       await setCategoryCounted(id, month, on);

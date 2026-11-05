@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import Animated, { interpolate, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { AdjustBalanceSheet } from '../../src/components/AdjustBalanceSheet';
 import { BudgetAvatar, BudgetSheet } from '../../src/components/BudgetSheet';
 import { RunwayChart } from '../../src/components/RunwayChart';
@@ -55,12 +57,48 @@ export default function MonthScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const goMonth = (n: number) => { haptics.tap(); setMonth((m) => addMonths(m, n)); };
+  // Changement de mois animé : le contenu suit le doigt, part sur le côté, le mois voisin arrive de l'autre.
   // Glisser à gauche : mois suivant ; à droite : précédent. Seulement un geste franchement horizontal.
+  const { width } = useWindowDimensions();
+  const threshold = width * 0.22;
+  const dx = useSharedValue(0);
+  const armed = useSharedValue(false); // seuil franchi pendant le glissement (une vibration à chaque passage)
+  const slideFrom = useRef(0); // côté d'arrivée du prochain mois affiché : 1 droite, -1 gauche
+  const goMonth = (n: number) => { slideFrom.current = n; setMonth((m) => addMonths(m, n)); };
+  useLayoutEffect(() => {
+    if (!slideFrom.current) return;
+    dx.value = slideFrom.current * width * 0.6;
+    dx.value = withTiming(0, { duration: 220 });
+    slideFrom.current = 0;
+  }, [month, width, dx]);
   const swipe = usePanGesture({
-    activeOffsetX: [-25, 25], failOffsetY: [-15, 15], runOnJS: true,
-    onDeactivate: (e) => { if (!e.canceled && Math.abs(e.translationX) > 60) goMonth(e.translationX < 0 ? 1 : -1); },
+    activeOffsetX: [-25, 25], failOffsetY: [-15, 15],
+    onUpdate: (e) => {
+      'worklet';
+      dx.value = e.translationX;
+      const over = Math.abs(e.translationX) > threshold;
+      if (over !== armed.value) {
+        armed.value = over;
+        if (over) scheduleOnRN(haptics.tap);
+      }
+    },
+    onDeactivate: (e) => {
+      'worklet';
+      armed.value = false;
+      const flung = Math.abs(e.velocityX) > 800 && Math.sign(e.velocityX) === Math.sign(e.translationX);
+      if (e.canceled || (Math.abs(e.translationX) < threshold && !flung)) {
+        dx.value = withSpring(0, { damping: 20, stiffness: 220 });
+        return;
+      }
+      const n = e.translationX < 0 ? 1 : -1;
+      if (flung && Math.abs(e.translationX) < threshold) scheduleOnRN(haptics.tap);
+      dx.value = withTiming(-n * width, { duration: 160 }, (done) => { if (done) scheduleOnRN(goMonth, n); });
+    },
   });
+  const slide = useAnimatedStyle(() => ({
+    transform: [{ translateX: dx.value }],
+    opacity: interpolate(Math.abs(dx.value), [0, width], [1, 0.2]),
+  }));
 
   const summary = data?.summaries.find((x) => x.month === month);
   const horizon = useMemo(() => {
@@ -77,7 +115,7 @@ export default function MonthScreen() {
     ?? data?.monthSettings.find((x) => x.month === month && x.kind === kind)?.plannedCounted ?? true;
   const toggleCounted = async (kind: 'revenu' | 'depense', on: boolean) => {
     const key = `${month}:${kind}`;
-    haptics.tap();
+    haptics.toggle(on);
     setPending((p) => ({ ...p, [key]: on }));
     try {
       await setMonthCounted(month, kind, on);
@@ -104,126 +142,128 @@ export default function MonthScreen() {
           <CircleButton icon="chevron-forward" accessibilityLabel="Mois suivant" onPress={() => goMonth(1)} />
         </View>
 
-        {error && <Text style={s.error}>Impossible de charger le budget : {error}</Text>}
+        <Animated.View style={[s.page, slide]}>
+          {error && <Text style={s.error}>Impossible de charger le budget : {error}</Text>}
 
-        {summary && hero && (
-          <View style={s.hero}>
-            {budgetName && (
-              <Pressable style={({ pressed }) => [s.budgetPill, pressed && s.pressed]} onPress={() => setSwitching(true)}
-                accessibilityRole="button" accessibilityLabel={`Budget : ${budgetName}. Changer de budget`} hitSlop={6}>
-                <BudgetAvatar name={budgetName} size={22} />
-                <Text style={s.budgetName} numberOfLines={1}>{budgetName}</Text>
-                <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
-              </Pressable>
-            )}
-            <Text style={s.heroLabel}>Solde {summary.status === 'passe' ? 'final' : 'projeté'} fin {monthName(month)}</Text>
-            <Text style={s.heroAmount}>
-              {hero.units}<Text style={s.heroRest}>{hero.rest}</Text>
-            </Text>
-            <View style={s.startPill}>
-              <Text style={s.startText}>Départ {formatEuros(summary.startCents)}</Text>
-              <Pressable accessibilityRole="button" onPress={() => setAdjusting(true)} hitSlop={10}>
-                <Text style={s.adjust}>Ajuster</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
-
-        {headline && (
-          <Pressable accessibilityRole="button" onPress={() => router.push('/projection')}
-            style={({ pressed }) => [s.card, s.runway, pressed && s.pressed]}>
-            <View style={s.runwayHead}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.runwayLead}>{headline.lead}</Text>
-                <Text style={s.runwayTitle}>{headline.title}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-            </View>
-            <RunwayChart months={horizon} currentMonth={current} />
-          </Pressable>
-        )}
-
-        {summary && (
-          <View style={s.row2}>
-            <View style={[s.card, s.flowCard]}>
-              {/* Toucher le haut du card : détail par catégorie et saisies ; l'interrupteur reste à part. */}
-              <Pressable accessibilityRole="button" accessibilityLabel={`Revenus de ${monthName(month)} : détail`}
-                onPress={() => router.push({ pathname: '/flux/[kind]', params: { kind: 'revenu', month } })}
-                style={({ pressed }) => [s.flowTap, pressed && { opacity: 0.6 }]}>
-                <View style={s.flowHead}>
-                  <View style={[s.flowIcon, { backgroundColor: colors.incomeBg }]}>
-                    <Ionicons name="arrow-down" size={15} color={colors.income} style={s.rotate} />
-                  </View>
-                  <Text style={s.flowLabel}>Revenus</Text>
-                </View>
-                {/* Gros montant = ce qui compte dans le solde (« Revenu total » de l'Excel). */}
-                <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(summary.incomeCents, true)}</Text>
-                <Text style={s.flowPlanned}>
-                  {formatAmount(summary.actualIncomeCents)} reçus · {formatAmount(summary.plannedIncomeCents)} prévus
-                </Text>
-              </Pressable>
-              {summary.status !== 'passe' && (
-                <CountedSwitch value={counted('revenu')} label="Compter le prévu des revenus"
-                  onChange={(on) => toggleCounted('revenu', on)} />
+          {summary && hero && (
+            <View style={s.hero}>
+              {budgetName && (
+                <Pressable style={({ pressed }) => [s.budgetPill, pressed && s.pressed]} onPress={() => setSwitching(true)}
+                  accessibilityRole="button" accessibilityLabel={`Budget : ${budgetName}. Changer de budget`} hitSlop={6}>
+                  <BudgetAvatar name={budgetName} size={22} />
+                  <Text style={s.budgetName} numberOfLines={1}>{budgetName}</Text>
+                  <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+                </Pressable>
               )}
-            </View>
-            <View style={[s.card, s.flowCard]}>
-              {/* Toucher le haut du card : détail par catégorie et saisies ; l'interrupteur reste à part. */}
-              <Pressable accessibilityRole="button" accessibilityLabel={`Dépenses de ${monthName(month)} : détail`}
-                onPress={() => router.push({ pathname: '/flux/[kind]', params: { kind: 'depense', month } })}
-                style={({ pressed }) => [s.flowTap, pressed && { opacity: 0.6 }]}>
-                <View style={s.flowHead}>
-                  <View style={[s.flowIcon, { backgroundColor: colors.warnBg }]}>
-                    <Ionicons name="arrow-up" size={15} color={colors.warn} style={s.rotate} />
-                  </View>
-                  <Text style={s.flowLabel}>Dépenses</Text>
-                </View>
-                <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(-summary.expenseCents)}</Text>
-                <Text style={s.flowPlanned}>
-                  {formatAmount(summary.actualExpenseCents)} dépensés · {formatAmount(summary.plannedExpenseCents)} prévus
-                </Text>
-              </Pressable>
-              {summary.status !== 'passe' && (
-                <CountedSwitch value={counted('depense')} label="Compter le prévu des dépenses"
-                  onChange={(on) => toggleCounted('depense', on)} />
-              )}
-            </View>
-          </View>
-        )}
-
-        {groups.map((g) => {
-          const open = expanded.includes(g.id);
-          const { shown, rest } = isFixedGroup(g.name) && !open
-            ? collapseRows(g.categories, 2) : { shown: g.categories, rest: null };
-          return (
-            <View key={g.id} style={{ gap: 12 }}>
-              <View style={s.groupHead}>
-                <Text style={s.groupName} accessibilityRole="header">{g.name}</Text>
-                <Text style={s.groupTotal}>{formatAmount(g.actualCents)} / {formatEuros(g.plannedCents)}</Text>
+              <Text style={s.heroLabel}>Solde {summary.status === 'passe' ? 'final' : 'projeté'} fin {monthName(month)}</Text>
+              <Text style={s.heroAmount}>
+                {hero.units}<Text style={s.heroRest}>{hero.rest}</Text>
+              </Text>
+              <View style={s.startPill}>
+                <Text style={s.startText}>Départ {formatEuros(summary.startCents)}</Text>
+                <Pressable accessibilityRole="button" onPress={() => setAdjusting(true)} hitSlop={10}>
+                  <Text style={s.adjust}>Ajuster</Text>
+                </Pressable>
               </View>
-              <Card>
-                {shown.map((c, i) => (
-                  <Fragment key={c.id}>
-                    {i > 0 && <Divider />}
-                    <CategoryRow line={c} month={month} />
-                  </Fragment>
-                ))}
-                {rest && (
-                  <>
-                    <Divider />
-                    <Pressable accessibilityRole="button" onPress={() => setExpanded([...expanded, g.id])}
-                      style={({ pressed }) => [s.catRow, pressed && s.pressed]}>
-                      <View style={s.catLine}>
-                        <Text style={s.restText}>+ {rest.count} {rest.count > 1 ? 'autres charges' : 'autre charge'}</Text>
-                        <Text style={s.restText}>{formatEuros(rest.actualCents)}</Text>
-                      </View>
-                    </Pressable>
-                  </>
+            </View>
+          )}
+
+          {headline && (
+            <Pressable accessibilityRole="button" onPress={() => router.push('/projection')}
+              style={({ pressed }) => [s.card, s.runway, pressed && s.pressed]}>
+              <View style={s.runwayHead}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.runwayLead}>{headline.lead}</Text>
+                  <Text style={s.runwayTitle}>{headline.title}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+              </View>
+              <RunwayChart months={horizon} currentMonth={current} />
+            </Pressable>
+          )}
+
+          {summary && (
+            <View style={s.row2}>
+              <View style={[s.card, s.flowCard]}>
+                {/* Toucher le haut du card : détail par catégorie et saisies ; l'interrupteur reste à part. */}
+                <Pressable accessibilityRole="button" accessibilityLabel={`Revenus de ${monthName(month)} : détail`}
+                  onPress={() => router.push({ pathname: '/flux/[kind]', params: { kind: 'revenu', month } })}
+                  style={({ pressed }) => [s.flowTap, pressed && { opacity: 0.6 }]}>
+                  <View style={s.flowHead}>
+                    <View style={[s.flowIcon, { backgroundColor: colors.incomeBg }]}>
+                      <Ionicons name="arrow-down" size={15} color={colors.income} style={s.rotate} />
+                    </View>
+                    <Text style={s.flowLabel}>Revenus</Text>
+                  </View>
+                  {/* Gros montant = ce qui compte dans le solde (« Revenu total » de l'Excel). */}
+                  <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(summary.incomeCents, true)}</Text>
+                  <Text style={s.flowPlanned}>
+                    {formatAmount(summary.actualIncomeCents)} reçus · {formatAmount(summary.plannedIncomeCents)} prévus
+                  </Text>
+                </Pressable>
+                {summary.status !== 'passe' && (
+                  <CountedSwitch value={counted('revenu')} label="Compter le prévu des revenus"
+                    onChange={(on) => toggleCounted('revenu', on)} />
                 )}
-              </Card>
+              </View>
+              <View style={[s.card, s.flowCard]}>
+                {/* Toucher le haut du card : détail par catégorie et saisies ; l'interrupteur reste à part. */}
+                <Pressable accessibilityRole="button" accessibilityLabel={`Dépenses de ${monthName(month)} : détail`}
+                  onPress={() => router.push({ pathname: '/flux/[kind]', params: { kind: 'depense', month } })}
+                  style={({ pressed }) => [s.flowTap, pressed && { opacity: 0.6 }]}>
+                  <View style={s.flowHead}>
+                    <View style={[s.flowIcon, { backgroundColor: colors.warnBg }]}>
+                      <Ionicons name="arrow-up" size={15} color={colors.warn} style={s.rotate} />
+                    </View>
+                    <Text style={s.flowLabel}>Dépenses</Text>
+                  </View>
+                  <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(-summary.expenseCents)}</Text>
+                  <Text style={s.flowPlanned}>
+                    {formatAmount(summary.actualExpenseCents)} dépensés · {formatAmount(summary.plannedExpenseCents)} prévus
+                  </Text>
+                </Pressable>
+                {summary.status !== 'passe' && (
+                  <CountedSwitch value={counted('depense')} label="Compter le prévu des dépenses"
+                    onChange={(on) => toggleCounted('depense', on)} />
+                )}
+              </View>
             </View>
-          );
-        })}
+          )}
+
+          {groups.map((g) => {
+            const open = expanded.includes(g.id);
+            const { shown, rest } = isFixedGroup(g.name) && !open
+              ? collapseRows(g.categories, 2) : { shown: g.categories, rest: null };
+            return (
+              <View key={g.id} style={{ gap: 12 }}>
+                <View style={s.groupHead}>
+                  <Text style={s.groupName} accessibilityRole="header">{g.name}</Text>
+                  <Text style={s.groupTotal}>{formatAmount(g.actualCents)} / {formatEuros(g.plannedCents)}</Text>
+                </View>
+                <Card>
+                  {shown.map((c, i) => (
+                    <Fragment key={c.id}>
+                      {i > 0 && <Divider />}
+                      <CategoryRow line={c} month={month} />
+                    </Fragment>
+                  ))}
+                  {rest && (
+                    <>
+                      <Divider />
+                      <Pressable accessibilityRole="button" onPress={() => setExpanded([...expanded, g.id])}
+                        style={({ pressed }) => [s.catRow, pressed && s.pressed]}>
+                        <View style={s.catLine}>
+                          <Text style={s.restText}>+ {rest.count} {rest.count > 1 ? 'autres charges' : 'autre charge'}</Text>
+                          <Text style={s.restText}>{formatEuros(rest.actualCents)}</Text>
+                        </View>
+                      </Pressable>
+                    </>
+                  )}
+                </Card>
+              </View>
+            );
+          })}
+        </Animated.View>
 
         <BudgetSheet visible={switching} onClose={() => setSwitching(false)} onChanged={load} />
 
@@ -272,6 +312,7 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   // Marge basse : la navbar flottante en verre recouvre le bas de l'écran.
   content: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 140, gap: 22 },
+  page: { gap: 22 },
   pressed: { backgroundColor: colors.surface2 },
   error: { color: colors.warn, fontFamily: font.regular },
 

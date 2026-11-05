@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { haptics } from '../lib/haptics';
 import { colors, font } from '../theme';
 
 const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -28,7 +29,7 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
                 key={route.key}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: focused }}
-                onPress={() => !focused && navigateToTab(route.key)}
+                onPress={() => { if (!focused) { haptics.tap(); navigateToTab(route.key); } }}
                 style={[styles.tab, focused && styles.tabActive]}
               >
                 <Ionicons name={ICONS[route.name] ?? 'ellipse-outline'} size={20} color={focused ? '#fff' : colors.textMuted} />
@@ -38,7 +39,7 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
           })}
         </View>
       </View>
-      <Pressable accessibilityLabel="Nouvelle saisie" onPress={() => router.push('/saisie')} style={styles.fab}>
+      <Pressable accessibilityLabel="Nouvelle saisie" onPress={() => { haptics.press(); router.push('/saisie'); }} style={styles.fab}>
         <Ionicons name="add" size={28} color={colors.accentInk} />
       </Pressable>
     </View>

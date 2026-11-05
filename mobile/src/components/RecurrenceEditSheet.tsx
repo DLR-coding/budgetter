@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from
 import { formatAmount, type GroupKind } from '../lib/budget';
 import { saveRecurrence, type CategoryRow, type GroupRow, type RecurrenceRow } from '../lib/data';
 import { clampDay, dayLabel, parsePlannedCents } from '../lib/settings';
+import { haptics } from '../lib/haptics';
 import { colors, font, radius } from '../theme';
 import { CategorySheet } from './CategorySheet';
 import { BottomSheet, CircleButton, PrimaryButton } from './ui';
@@ -56,9 +57,11 @@ export function RecurrenceEditSheet({ visible, groups, cats, recurrence, onClose
     setBusy(true);
     try {
       await saveRecurrence({ id: recurrence?.id, categoryId, label: label.trim(), amountCents: cents, dayOfMonth: day, active });
+      haptics.success();
       onSaved();
       onClose();
     } catch (e) {
+      haptics.warning();
       setError((e as Error).message);
     } finally {
       setBusy(false);
@@ -103,7 +106,7 @@ export function RecurrenceEditSheet({ visible, groups, cats, recurrence, onClose
 
         <View style={s.switchRow}>
           <Text style={s.fieldText}>Active</Text>
-          <Switch value={active} onValueChange={setActive}
+          <Switch value={active} onValueChange={(on) => { haptics.toggle(on); setActive(on); }}
             trackColor={{ false: colors.surface2, true: colors.accent }} thumbColor={colors.text} />
         </View>
 

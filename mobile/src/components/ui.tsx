@@ -6,9 +6,13 @@ import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, View, type St
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GroupKind } from '../lib/budget';
 import type { EntryRow } from '../lib/data';
+import { haptics } from '../lib/haptics';
 import { colors, font, radius } from '../theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
+
+/** Chaque appui sur un bouton partagé vibre légèrement. */
+const withHaptic = (fn: () => void) => () => { haptics.press(); fn(); };
 export type Tone = 'default' | 'muted' | 'accent' | 'income' | 'warn';
 export type Tint = 'accent' | 'income' | 'warn';
 
@@ -32,7 +36,7 @@ export function CircleButton({ icon, onPress, accessibilityLabel, tone = 'defaul
   icon: IconName; onPress: () => void; accessibilityLabel: string; tone?: Tone;
 }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress} hitSlop={6} style={s.circle}>
+    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={withHaptic(onPress)} hitSlop={6} style={s.circle}>
       <Ionicons name={icon} size={20} color={toneColor[tone]} />
     </Pressable>
   );
@@ -66,7 +70,7 @@ export function SectionTitle({ title, right }: { title: string; right?: string |
       <Text style={s.sectionTitle} accessibilityRole="header">{title}</Text>
       {typeof right === 'string' ? <Text style={s.sectionNote}>{right}</Text>
         : right ? (
-          <Pressable accessibilityRole="button" onPress={right.onPress} hitSlop={8}>
+          <Pressable accessibilityRole="button" onPress={withHaptic(right.onPress)} hitSlop={8}>
             <Text style={s.sectionLink}>{right.label}</Text>
           </Pressable>
         ) : null}
@@ -80,7 +84,7 @@ export function ListRow({ label, sublabel, value, valueTone = 'default', chevron
   onPress?: () => void; left?: ReactNode; right?: ReactNode;
 }) {
   return (
-    <Pressable disabled={!onPress} onPress={onPress} accessibilityRole={onPress ? 'button' : undefined}
+    <Pressable disabled={!onPress} onPress={onPress && withHaptic(onPress)} accessibilityRole={onPress ? 'button' : undefined}
       style={({ pressed }) => [s.row, pressed && s.pressed]}>
       {left}
       <View style={s.rowText}>
@@ -110,7 +114,7 @@ export function CategoryPill({ label, tint, outlined, onPress }: {
 }) {
   const c = tintColors[tint];
   return (
-    <Pressable disabled={!onPress} onPress={onPress} accessibilityRole={onPress ? 'button' : undefined} hitSlop={6}
+    <Pressable disabled={!onPress} onPress={onPress && withHaptic(onPress)} accessibilityRole={onPress ? 'button' : undefined} hitSlop={6}
       style={[s.pill, outlined ? { borderColor: c.fg } : { backgroundColor: c.bg, borderColor: c.bg }]}>
       <Text style={[s.pillText, { color: c.fg }]} numberOfLines={1}>{label}</Text>
     </Pressable>
@@ -136,7 +140,7 @@ export function PrimaryButton({ label, trailing, onPress, disabled, variant = 'a
 }) {
   const fg = variant === 'accent' ? colors.accentInk : colors.text;
   return (
-    <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
+    <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={withHaptic(onPress)}
       style={({ pressed }) => [s.button, variant === 'accent' ? s.buttonAccent : s.buttonSecondary,
         trailing != null && s.buttonSplit, (pressed || disabled) && { opacity: disabled ? 0.4 : 0.85 }]}>
       <Text style={[s.buttonText, { color: fg }]}>{label}</Text>

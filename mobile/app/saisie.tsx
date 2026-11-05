@@ -169,7 +169,7 @@ export default function Saisie() {
             <Text style={s.cardTitle}>Dépense exceptionnelle ?</Text>
             <Text style={s.cardSub}>Exclue du total « sans imprévus »</Text>
           </View>
-          <Switch value={exceptional} onValueChange={setExceptional} accessibilityLabel="Dépense exceptionnelle"
+          <Switch value={exceptional} onValueChange={(on) => { haptics.toggle(on); setExceptional(on); }} accessibilityLabel="Dépense exceptionnelle"
             trackColor={{ true: colors.accent, false: colors.borderStrong }} thumbColor={colors.textMuted} />
         </View>
       )}

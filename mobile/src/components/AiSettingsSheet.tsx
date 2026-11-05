@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import { clearAiSettings, saveAiSettings } from '../lib/ai-settings';
 import { validateAiSettings, type AiSettings } from '../lib/receipt';
 import { testAiSettings } from '../lib/receipts';
+import { haptics } from '../lib/haptics';
 import { colors, font, radius } from '../theme';
 import { BottomSheet, PrimaryButton } from './ui';
 
@@ -40,7 +41,7 @@ export function AiSettingsSheet({ visible, current, onClose, onSaved }: Props) {
   };
 
   const test = () => run(async () => setResult(await testAiSettings(validateAiSettings(input()))));
-  const save = () => run(async () => { await saveAiSettings(input()); onSaved(); onClose(); });
+  const save = () => run(async () => { await saveAiSettings(input()); haptics.success(); onSaved(); onClose(); });
   const clear = () => run(async () => { await clearAiSettings(); onSaved(); onClose(); });
 
   return (
