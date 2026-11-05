@@ -18,7 +18,7 @@ export function Login() {
 
   return (
     <View style={s.screen}>
-      <Text style={s.title}>Budget</Text>
+      <Text style={s.title}>Budgetter</Text>
       <TextInput style={s.input} placeholder="E-mail" placeholderTextColor={colors.textFaint}
         autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
       <TextInput style={s.input} placeholder="Mot de passe" placeholderTextColor={colors.textFaint}

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Budget",
+    "name": "Budgetter",
     "slug": "budget",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -31,7 +31,7 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Budget utilise l’appareil photo pour lire tes tickets de caisse.",
+          "cameraPermission": "Budgetter utilise l’appareil photo pour lire tes tickets de caisse.",
           "microphonePermission": false
         }
       ],
