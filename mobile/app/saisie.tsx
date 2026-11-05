@@ -234,11 +234,13 @@ export default function Saisie() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <BottomSheet visible={scanMenu} onClose={() => setScanMenu(false)} title="Ticket">
+      <BottomSheet visible={scanMenu} onClose={() => setScanMenu(false)} title="Scanner">
         <View style={{ gap: 6 }}>
-          {([['camera', 'camera-outline', 'Prendre une photo'], ['library', 'images-outline', 'Choisir une image']] as const)
+          {([['camera', 'camera-outline', 'Prendre une photo'], ['library', 'images-outline', 'Importer un ticket'],
+            ['invoice', 'document-text-outline', 'Importer une facture (PDF ou image)']] as const)
             .map(([source, icon, label]) => (
               <Pressable key={source} style={s.option} accessibilityRole="button" onPress={() => {
+                haptics.press();
                 setScanMenu(false);
                 router.push({ pathname: '/ticket', params: { source } });
               }}>

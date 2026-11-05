@@ -78,6 +78,14 @@ test('messages : consigne avec les catégories, photo en data URL', () => {
   assert.deepEqual((user.content as unknown[])[0], { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,QUJD' } });
 });
 
+test('messages facture : une seule ligne au montant TTC, sans changer la consigne du ticket', () => {
+  const [sys, user] = buildReceiptMessages(cats, 'image/jpeg', 'QUJD', 'facture');
+  assert.match(sys.content as string, /FACTURE/);
+  assert.match(sys.content as string, /UNE seule ligne/);
+  assert.deepEqual((user.content as unknown[])[1], { type: 'text', text: 'Voici la facture.' });
+  assert.doesNotMatch(buildReceiptMessages(cats, 'image/jpeg', 'QUJD')[0].content as string, /FACTURE/);
+});
+
 test('réponse normale', () => {
   const r = parseReceiptCompletion(completion(JSON.stringify(ticket)), cats);
   assert.equal(r.merchant, 'Auchan');

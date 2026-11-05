@@ -113,8 +113,21 @@ export const aiSettingsSummary = (s: AiSettings | null) =>
   s ? `${s.baseUrl.replace(/^https?:\/\//i, '').split('/')[0]} · ${s.model}` : 'Non configuré';
 
 export type ReceiptCategory = { id: string; name: string; group: string };
+/** Ticket de caisse (un article par ligne) ou facture (une seule ligne : le montant à payer). */
+export type ReceiptKind = 'ticket' | 'facture';
 
-function systemPrompt(categories: ReceiptCategory[]) {
+const INVOICE_RULES = `
+
+Ce document est une FACTURE (électricité, gaz, eau, téléphone, internet, assurance…), pas un ticket de caisse.
+Ces règles remplacent les précédentes quand elles diffèrent :
+- UNE seule ligne : label = le service et la période (« Électricité octobre 2026 »), quantity = 1,
+  unit_price_cents = le montant TTC à payer. Ne détaille pas abonnement, consommation ni taxes.
+- total_cents = ce même montant TTC à payer.
+- merchant = le fournisseur (« EDF »).
+- date = la date de prélèvement ou d'échéance si elle est imprimée, sinon la date de la facture.
+- category_id = la catégorie du service facturé (électricité, téléphone…).`;
+
+function systemPrompt(categories: ReceiptCategory[], kind: ReceiptKind) {
   const list = categories.map((c) => `- ${c.id} : ${c.group} / ${c.name}`).join('\n');
   return `Tu lis des tickets de caisse français et tu renvoies UNIQUEMENT un objet JSON, sans texte autour ni balises Markdown.
 
@@ -133,18 +146,18 @@ Règles :
 - total_cents = le total payé imprimé sur le ticket.
 
 Catégories disponibles :
-${list}`;
+${list}${kind === 'facture' ? INVOICE_RULES : ''}`;
 }
 
 /** Messages chat/completions : consigne + photo du ticket en data URL. */
-export function buildReceiptMessages(cats: ReceiptCategory[], mediaType: string, base64: string) {
+export function buildReceiptMessages(cats: ReceiptCategory[], mediaType: string, base64: string, kind: ReceiptKind = 'ticket') {
   return [
-    { role: 'system', content: systemPrompt(cats) },
+    { role: 'system', content: systemPrompt(cats, kind) },
     {
       role: 'user',
       content: [
         { type: 'image_url', image_url: { url: `data:${mediaType};base64,${base64}` } },
-        { type: 'text', text: 'Voici le ticket.' },
+        { type: 'text', text: kind === 'facture' ? 'Voici la facture.' : 'Voici le ticket.' },
       ],
     },
   ];

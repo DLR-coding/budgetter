@@ -1,18 +1,23 @@
 // Ticket de caisse : photo, envoi dans le stockage privé 'receipts', lecture par appel direct du téléphone
 // à un service IA compatible OpenAI (réglé dans Réglages › Lecture des tickets).
+import * as DocumentPicker from 'expo-document-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { loadAiSettings } from './ai-settings';
 import type { CategoryRow, GroupRow } from './data';
-import { buildReceiptMessages, parseReceiptCompletion, type AiSettings, type ParsedReceipt } from './receipt';
+import { buildReceiptMessages, parseReceiptCompletion, type AiSettings, type ParsedReceipt, type ReceiptKind } from './receipt';
 import { supabase } from './supabase';
 
 const MAX_SIDE = 1568; // assez pour lire un ticket, image légère à envoyer
+const INVOICE_SIDE = 2200; // une page A4 : petits caractères, il faut plus de pixels
 
 export type ReceiptPhoto = { uri: string; base64: string };
+/** Appareil photo, image de la galerie (ticket), ou facture (PDF ou image) choisie dans les fichiers. */
+export type ReceiptSource = 'camera' | 'library' | 'invoice';
 
-/** Ouvre l'appareil photo, ou la galerie. null si l'utilisateur annule ; erreur si l'appareil photo est refusé. */
-export async function takeReceiptPhoto(source: 'camera' | 'library' = 'camera'): Promise<ReceiptPhoto | null> {
+/** Ouvre l'appareil photo, la galerie ou les fichiers. null si l'utilisateur annule ; erreur si l'appareil photo est refusé. */
+export async function takeReceiptPhoto(source: ReceiptSource = 'camera'): Promise<ReceiptPhoto | null> {
+  if (source === 'invoice') return pickInvoice();
   if (source === 'camera') {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) throw new Error('L’accès à l’appareil photo est refusé. Autorise-le dans les réglages d’Android.');
@@ -23,14 +28,38 @@ export async function takeReceiptPhoto(source: 'camera' | 'library' = 'camera'):
     : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
   if (shot.canceled || !shot.assets?.[0]) return null;
   const { uri, width, height } = shot.assets[0];
+  return toJpeg(uri, width, height, MAX_SIDE);
+}
 
+/** Facture choisie dans les fichiers : un PDF devient l'image de sa première page (lisible par tout modèle de vision). */
+async function pickInvoice(): Promise<ReceiptPhoto | null> {
+  const res = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true });
+  const file = res.canceled ? null : res.assets?.[0];
+  if (!file) return null;
+  if (file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+    // shortcut: première page seulement (montant et date y sont), envoyer les suivantes si une facture le demande.
+    try {
+      // Import à la demande : module natif absent d'Expo Go, le reste de l'écran doit y fonctionner.
+      const { default: PdfThumbnail } = await import('react-native-pdf-thumbnail');
+      const page = await PdfThumbnail.generate(file.uri, 0, { maxWidth: INVOICE_SIDE, maxHeight: INVOICE_SIDE, quality: 90 });
+      return toJpeg(page.uri, page.width, page.height, INVOICE_SIDE);
+    } catch {
+      throw new Error('Impossible de lire ce PDF (protégé par mot de passe ou abîmé ?). Essaie avec une capture d’écran.');
+    }
+  }
+  const image = await ImageManipulator.manipulate(file.uri).renderAsync();
+  return toJpeg(file.uri, image.width, image.height, INVOICE_SIDE);
+}
+
+/** JPEG réduit (côté max `maxSide`) en base64, prêt à envoyer. */
+async function toJpeg(uri: string, width: number, height: number, maxSide: number): Promise<ReceiptPhoto> {
   const ctx = ImageManipulator.manipulate(uri);
-  if (Math.max(width, height) > MAX_SIDE) {
-    ctx.resize(width >= height ? { width: MAX_SIDE, height: null } : { width: null, height: MAX_SIDE });
+  if (Math.max(width, height) > maxSide) {
+    ctx.resize(width >= height ? { width: maxSide, height: null } : { width: null, height: maxSide });
   }
   const image = await ctx.renderAsync();
   const out = await image.saveAsync({ format: SaveFormat.JPEG, compress: 0.7, base64: true });
-  if (!out.base64) throw new Error('Impossible de préparer la photo du ticket.');
+  if (!out.base64) throw new Error('Impossible de préparer l’image.');
   return { uri: out.uri, base64: out.base64 };
 }
 
@@ -53,7 +82,7 @@ export async function removeReceipt(path: string) {
 export const MISSING_AI_SETTINGS = 'Configure la lecture des tickets dans Réglages.';
 
 /** Lit le ticket avec le modèle de vision du service IA réglé. Seules les catégories de dépense sont proposées. */
-export async function parseReceipt(base64: string, groups: GroupRow[], cats: CategoryRow[]): Promise<ParsedReceipt> {
+export async function parseReceipt(base64: string, groups: GroupRow[], cats: CategoryRow[], kind: ReceiptKind = 'ticket'): Promise<ParsedReceipt> {
   const ai = await loadAiSettings();
   if (!ai) throw new Error(MISSING_AI_SETTINGS);
   const groupName = new Map(groups.filter((g) => g.kind === 'depense').map((g) => [g.id, g.name]));
@@ -66,7 +95,7 @@ export async function parseReceipt(base64: string, groups: GroupRow[], cats: Cat
       model: ai.model,
       temperature: 0,
       max_tokens: 8000, // large : un modèle qui « réfléchit » consomme des jetons avant le JSON
-      messages: buildReceiptMessages(categories, 'image/jpeg', base64),
+      messages: buildReceiptMessages(categories, 'image/jpeg', base64, kind),
     }),
   });
   const json: unknown = await res.json().catch(() => {

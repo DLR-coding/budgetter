@@ -22,7 +22,9 @@ import { haptics } from '../src/lib/haptics';
 type Phase = { step: 'photo' } | { step: 'loading' } | { step: 'error'; message: string; settings?: boolean } | { step: 'ready' };
 
 export default function Ticket() {
-  const { source } = useLocalSearchParams<{ source?: string }>(); // 'library' : image de la galerie
+  const { source } = useLocalSearchParams<{ source?: string }>(); // 'library' : image de la galerie ; 'invoice' : facture
+  const invoice = source === 'invoice';
+  const doc = invoice ? 'la facture' : 'le ticket';
   const insets = useSafeAreaInsets();
   const photo = useRef<string | null>(null);   // base64 du JPEG réduit
   const path = useRef<string | null>(null);    // chemin dans le bucket 'receipts', une fois envoyé
@@ -52,7 +54,7 @@ export default function Ticket() {
       const parse = loadCategories().then(({ groups: g, cats: c }) => {
         setGroups(g);
         setCats(c);
-        return parseReceipt(base64, g, c);
+        return parseReceipt(base64, g, c, invoice ? 'facture' : 'ticket');
       });
       const [up, parsed] = await Promise.allSettled([upload, parse]);
       if (up.status === 'rejected') throw up.reason;
@@ -69,7 +71,7 @@ export default function Ticket() {
     try {
       // Sans service IA réglé, inutile de prendre la photo.
       if (!(await loadAiSettings())) return setPhase({ step: 'error', message: MISSING_AI_SETTINGS, settings: true });
-      const shot = await takeReceiptPhoto(source === 'library' ? 'library' : 'camera');
+      const shot = await takeReceiptPhoto(source === 'library' || source === 'invoice' ? source : 'camera');
       if (!shot) return router.back();
       photo.current = shot.base64;
       await analyse();
@@ -115,7 +117,7 @@ export default function Ticket() {
   }
 
   const header = (
-    <ScreenHeader title="Vérifier le ticket" left="close" onLeft={() => router.back()}
+    <ScreenHeader title={`Vérifier ${doc}`} left="close" onLeft={() => router.back()}
       right={phase.step === 'ready' || (phase.step === 'error' && photo.current)
         ? <CircleButton icon="refresh" onPress={analyse} accessibilityLabel="Relancer l’analyse" />
         : undefined} />
@@ -137,7 +139,7 @@ export default function Ticket() {
           ) : phase.step === 'loading' ? (
             <>
               <ActivityIndicator color={colors.accentText} />
-              <Text style={s.muted}>Lecture du ticket…</Text>
+              <Text style={s.muted}>Lecture {invoice ? 'de la facture' : 'du ticket'}…</Text>
             </>
           ) : null}
         </View>
@@ -174,9 +176,9 @@ export default function Ticket() {
           <View style={{ flex: 1, minWidth: 0 }}>
             <Pressable onPress={() => setMerchantText(receipt.merchant ?? '')} accessibilityRole="button"
               accessibilityLabel={`Commerçant : ${receipt.merchant ?? 'aucun'}. Modifier`} hitSlop={6}>
-              <Text style={s.merchantName} numberOfLines={1}>{receipt.merchant ?? 'Ticket'}</Text>
+              <Text style={s.merchantName} numberOfLines={1}>{receipt.merchant ?? (invoice ? 'Facture' : 'Ticket')}</Text>
             </Pressable>
-            <Pressable onPress={pickDate} accessibilityRole="button" accessibilityLabel="Modifier la date du ticket" hitSlop={6}>
+            <Pressable onPress={pickDate} accessibilityRole="button" accessibilityLabel={`Modifier la date de ${doc}`} hitSlop={6}>
               <Text style={s.muted} numberOfLines={1}>{receiptSubtitle(date, lines.length)}</Text>
             </Pressable>
           </View>
@@ -185,13 +187,13 @@ export default function Ticket() {
 
         {otherMonth && (
           <Banner tone="warn" icon="calendar-outline"
-            text={`Ce ticket sera classé en ${monthLabel(monthOf(date)).toLowerCase()} : touche la date pour la changer`} />
+            text={`${invoice ? 'Cette facture sera classée' : 'Ce ticket sera classé'} en ${monthLabel(monthOf(date)).toLowerCase()} : touche la date pour la changer`} />
         )}
 
         {match != null && (match
-          ? <Banner tone="ok" icon="checkmark" text="La somme des lignes correspond au total du ticket" />
+          ? <Banner tone="ok" icon="checkmark" text={`La somme des lignes correspond au total ${invoice ? 'de la facture' : 'du ticket'}`} />
           : <Banner tone="warn" icon="alert-circle-outline"
-              text={`La somme des lignes (${formatEuros(total)}) ne correspond pas au total du ticket (${formatEuros(receipt.total_cents!)})`} />)}
+              text={`La somme des lignes (${formatEuros(total)}) ne correspond pas au total ${invoice ? 'de la facture' : 'du ticket'} (${formatEuros(receipt.total_cents!)})`} />)}
 
         {lines.length > 0 && (
           <View style={s.card}>
@@ -257,7 +259,7 @@ export default function Ticket() {
         {lineEdit && (
           <View style={{ gap: 12 }}>
             {lineEdit.index != null && lines[lineEdit.index]?.raw_label
-              ? <Text style={s.raw}>Sur le ticket : {lines[lineEdit.index].raw_label.toUpperCase()}</Text> : null}
+              ? <Text style={s.raw}>Sur {doc} : {lines[lineEdit.index].raw_label.toUpperCase()}</Text> : null}
             <TextInput style={s.input} value={lineEdit.form.label} onChangeText={(label) => setForm({ label })}
               autoFocus={lineEdit.index == null} placeholder="Libellé" placeholderTextColor={colors.textFaint}
               accessibilityLabel="Libellé de l’article" />
