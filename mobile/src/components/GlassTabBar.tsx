@@ -1,4 +1,4 @@
-import { BackdropFilter, Canvas, Group, RuntimeShader, type SkFont, Text as SkText, useFont } from '@shopify/react-native-skia';
+import { Canvas, Group, Paint, RuntimeShader, type SkFont, Text as SkText, useFont } from '@shopify/react-native-skia';
 import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -65,20 +65,23 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
         <BlurView intensity={40} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
         {width > 0 && (
           <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
-            {state.routes.map((route, i) => {
-              const color = state.index === i ? glass.activeInk : colors.textMuted;
-              const glyph = String.fromCodePoint(Number(Ionicons.glyphMap[ICONS[route.name] ?? 'ellipse-outline']));
-              const label = LABELS[route.name] ?? route.name;
-              return (
-                <Group key={route.key}>
-                  {iconFont && <Centered font={iconFont} text={glyph} color={color} cx={centerX(i)} cy={25} />}
-                  {labelFont && <Centered font={labelFont} text={label} color={color} cx={centerX(i)} cy={44} />}
-                </Group>
-              );
-            })}
-            {/* Échelle 1/pd : le filtre est calculé en pixels physiques, pas en dp (sinon pixellisé). */}
+            {/* La lentille filtre le calque des onglets (et non un BackdropFilter : le fond Skia est
+                transparent, l'original resterait visible sous la lentille, d'où un dédoublement).
+                Échelle 1/pd puis pd : le filtre est calculé en pixels physiques, pas en dp. */}
             <Group transform={[{ scale: 1 / PIXEL_RATIO }]}>
-              <BackdropFilter filter={<RuntimeShader source={LENS} uniforms={lensUniforms} />} />
+              <Group layer={<Paint><RuntimeShader source={LENS} uniforms={lensUniforms} /></Paint>} transform={[{ scale: PIXEL_RATIO }]}>
+                {state.routes.map((route, i) => {
+                  const color = state.index === i ? glass.activeInk : colors.textMuted;
+                  const glyph = String.fromCodePoint(Number(Ionicons.glyphMap[ICONS[route.name] ?? 'ellipse-outline']));
+                  const label = LABELS[route.name] ?? route.name;
+                  return (
+                    <Group key={route.key}>
+                      {iconFont && <Centered font={iconFont} text={glyph} color={color} cx={centerX(i)} cy={25} />}
+                      {labelFont && <Centered font={labelFont} text={label} color={color} cx={centerX(i)} cy={44} />}
+                    </Group>
+                  );
+                })}
+              </Group>
             </Group>
           </Canvas>
         )}

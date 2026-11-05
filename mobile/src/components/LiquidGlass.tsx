@@ -47,7 +47,7 @@ half4 main(float2 p) {
 
 // Lentille liquide : deux pilules (tête et traîne) fusionnées par smooth min, qui grossissent et
 // réfractent ce qui est dessiné dessous dans le canevas. xy arrive en pixels physiques : le
-// BackdropFilter doit être posé dans un Group à l'échelle 1/pd (sinon rendu en dp, pixellisé).
+// filtre doit être posé dans un Group à l’échelle 1/pd (sinon rendu en dp, pixellisé).
 export const LENS = compile(`
 uniform shader image;
 uniform float pd;
