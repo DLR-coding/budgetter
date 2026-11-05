@@ -9,7 +9,8 @@ Toute l'interface est en français.
 - **Styles : `StyleSheet.create` + jetons de `mobile/src/theme.ts`.** Pas de NativeWind,
   pas de couleur en dur dans les écrans : toujours `colors.*`, `radius.*`, `font.*`.
 - Les effets visuels spéciaux (verre, etc.) vivent dans des composants isolés
-  (ex. `src/components/GlassTabBar.tsx`). Plus tard possiblement avec React Native Skia.
+  (ex. `src/components/GlassTabBar.tsx`). Verre liquide en React Native Skia : shaders SDF dans
+  `src/components/LiquidGlass.tsx` ; Skia ne réfracte que ce qu’il dessine, le flou natif reste `expo-blur`.
 - **Supabase** (Postgres + Auth + Storage). Schéma : `supabase/migrations/`.
   Toute modification de schéma = nouvelle migration numérotée, jamais d'édition de `0001`.
 - **Lecture de tickets** : appel direct du téléphone à un service IA compatible OpenAI (URL `…/v1`, clé, modèle)

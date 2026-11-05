@@ -26,6 +26,14 @@ export const colors = {
   warnBg: '#2E2216',
 };
 
+// Verre liquide (src/components/LiquidGlass.tsx) : teinte posée sur le flou, lentille, reflets.
+export const glass = {
+  fill: 'rgba(32,44,62,0.45)',    // teinte bleu nuit sur le flou natif
+  lens: 'rgba(255,255,255,0.10)', // lentille de l'onglet actif
+  rim: '#FFFFFF',                 // reflet de lumière sur les bords
+  activeInk: '#FFFFFF',           // icône et libellé de l'onglet actif
+};
+
 export const radius = { card: 22, pill: 999, key: 18 };
 export const space = { screen: 20, gap: 10 };
 
