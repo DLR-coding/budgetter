@@ -11,6 +11,7 @@ import {
 } from '../src/lib/data';
 import { parseFormula } from '../src/lib/formula';
 import { colors, font, radius } from '../src/theme';
+import { haptics } from '../src/lib/haptics';
 
 type Params = { entryId?: string; kind?: string; date?: string; merchant?: string; exceptional?: string; categoryId?: string; amount?: string };
 type Item = { key: number; label: string; rawLabel?: string; quantity: number; unitPriceCents: number; categoryId: string };
@@ -97,6 +98,7 @@ export default function SaisieArticles() {
         // formula à null : la formule d'origine ne décrit plus les articles modifiés.
         await updateEntry(editId, { merchant: merchant.trim() || null, exceptional: kind === 'depense' && exceptional, formula: null });
         await replaceEntryLines(editId, lines);
+        haptics.success();
         router.back();
         return;
       }
@@ -104,8 +106,10 @@ export default function SaisieArticles() {
         date, merchant: merchant.trim() || undefined, exceptional: kind === 'depense' && exceptional, source: 'manuel', lines,
       });
       // Ferme aussi la saisie rapide restée dessous.
+      haptics.success();
       router.dismissTo('/');
     } catch (e) {
+      haptics.warning();
       setError((e as Error).message);
       setSaving(false);
     }

@@ -10,6 +10,7 @@ import { loadCategories, saveEntry, topCategoryIds, type CategoryRow, type Group
 import { isFormula, parseFormula } from '../src/lib/formula';
 import { pressKey, type Key } from '../src/lib/keypad';
 import { colors, font, radius } from '../src/theme';
+import { haptics } from '../src/lib/haptics';
 
 type Kind = 'depense' | 'revenu';
 
@@ -97,8 +98,10 @@ export default function Saisie() {
         formula: formula ? input : undefined,
         lines: parsed.lines.map((l) => ({ ...l, categoryId })),
       });
+      haptics.success();
       router.back();
     } catch (e) {
+      haptics.warning();
       setError((e as Error).message);
       setSaving(false);
     }
@@ -191,7 +194,7 @@ export default function Saisie() {
             {row.map((k) => {
               const op = k === 'del' || k === '×' || k === '+';
               return (
-                <Pressable key={k} style={[s.key, op && s.opKey]} onPress={() => setInput((v) => pressKey(v, k))}
+                <Pressable key={k} style={[s.key, op && s.opKey]} onPress={() => { haptics.tap(); setInput((v) => pressKey(v, k)); }}
                   onLongPress={k === 'del' ? () => setInput('') : undefined}
                   accessibilityLabel={k === 'del' ? 'Effacer (appui long : tout effacer)' : k}>
                   {k === 'del'

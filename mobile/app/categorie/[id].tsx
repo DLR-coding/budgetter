@@ -15,6 +15,7 @@ import {
 } from '../../src/lib/data';
 import { dayMonth, entryKind, entryTitle, lineLabel, otherLinesNote, qtyLabel, sourceLabel } from '../../src/lib/entries';
 import { colors, font, radius } from '../../src/theme';
+import { haptics } from '../../src/lib/haptics';
 
 type Data = Awaited<ReturnType<typeof loadBudget>> & { entries: EntryRow[] };
 
@@ -115,6 +116,7 @@ export default function CategoryScreen() {
   };
   const newCents = parsePriceCents(amount);
   const toggleCounted = async (on: boolean) => {
+    haptics.tap();
     setPendingCounted(on);
     try {
       await setCategoryCounted(id, month, on);

@@ -5,6 +5,7 @@ import { formatEuros, monthName, parseSignedCents, type Month } from '../lib/bud
 import { setBalanceAdjustment } from '../lib/data';
 import { colors, font, radius } from '../theme';
 import { BottomSheet, Divider, PrimaryButton } from './ui';
+import { haptics } from '../lib/haptics';
 
 export function AdjustBalanceSheet({ visible, month, computedCents, onClose, onSaved }: {
   visible: boolean; month: Month; computedCents: number; onClose: () => void; onSaved: () => void;
@@ -28,8 +29,10 @@ export function AdjustBalanceSheet({ visible, month, computedCents, onClose, onS
     setSaving(true);
     try {
       await setBalanceAdjustment(month, cents);
+      haptics.success();
       onSaved();
     } catch (e) {
+      haptics.warning();
       setError((e as Error).message);
     } finally {
       setSaving(false);

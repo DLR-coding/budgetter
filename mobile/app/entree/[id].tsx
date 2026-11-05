@@ -15,6 +15,7 @@ import { deleteEntry, loadCategories, loadEntry, updateEntry, type EntryRow } fr
 import { dayMonth, entryKind, linesByCategory, signedCents, type Ctx } from '../../src/lib/entries';
 import { supabase } from '../../src/lib/supabase';
 import { colors, font, radius } from '../../src/theme';
+import { haptics } from '../../src/lib/haptics';
 
 type Draft = { merchant: string; date: string; note: string; exceptional: boolean };
 const draftOf = (e: EntryRow): Draft =>
@@ -82,8 +83,10 @@ export default function EntryScreen() {
     setError(null);
     try {
       await action();
+      haptics.success();
       router.back();
     } catch (e) {
+      haptics.warning();
       setError((e as Error).message);
       setBusy(false);
     }
@@ -193,7 +196,7 @@ export default function EntryScreen() {
             <PrimaryButton label="Annuler" variant="secondary" onPress={() => setConfirmDelete(false)} />
           </View>
           <Pressable style={[s.dangerButton, busy && { opacity: 0.4 }]} disabled={busy} accessibilityRole="button"
-            onPress={() => { setConfirmDelete(false); run(() => deleteEntry(entry.id, entry.receipt_path)); }}>
+            onPress={() => { haptics.warning(); setConfirmDelete(false); run(() => deleteEntry(entry.id, entry.receipt_path)); }}>
             <Text style={s.dangerText}>Supprimer</Text>
           </Pressable>
         </View>

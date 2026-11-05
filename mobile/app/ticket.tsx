@@ -17,6 +17,7 @@ import {
 import { loadAiSettings } from '../src/lib/ai-settings';
 import { MISSING_AI_SETTINGS, parseReceipt, removeReceipt, takeReceiptPhoto, uploadReceipt } from '../src/lib/receipts';
 import { colors, font, radius } from '../src/theme';
+import { haptics } from '../src/lib/haptics';
 
 type Phase = { step: 'photo' } | { step: 'loading' } | { step: 'error'; message: string; settings?: boolean } | { step: 'ready' };
 
@@ -101,8 +102,10 @@ export default function Ticket() {
         date, lines: toSaveLines(receipt.lines),
       });
       // Le ticket peut dater d'un autre mois : on ouvre ce mois-là, sinon la dépense semble absente.
+      haptics.success();
       router.dismissTo({ pathname: '/', params: { month: date.slice(0, 7), at: String(Date.now()) } });
     } catch (e) {
+      haptics.warning();
       kept.current = false;
       if (left.current) drop();
       setSaving(false);
@@ -199,7 +202,7 @@ export default function Ticket() {
                   {i > 0 && <Divider />}
                   <Pressable style={({ pressed }) => [s.line, pressed && s.pressed]}
                     onPress={() => setLineEdit({ index: i, form: lineForm(l) })}
-                    onLongPress={() => setReceipt({ ...receipt, lines: removeLine(lines, i) })}
+                    onLongPress={() => { haptics.warning(); setReceipt({ ...receipt, lines: removeLine(lines, i) }); }}
                     accessibilityRole="button" accessibilityHint="Touche pour modifier, appui long pour retirer la ligne">
                     <View style={s.lineText}>
                       <Text style={s.lineLabel} numberOfLines={1}>
@@ -279,6 +282,7 @@ export default function Ticket() {
               {lineEdit.index != null && (
                 <View style={{ flex: 1 }}>
                   <PrimaryButton label="Retirer" variant="secondary" onPress={() => {
+                    haptics.warning();
                     setReceipt({ ...receipt, lines: removeLine(lines, lineEdit.index!) });
                     setLineEdit(null);
                   }} />

@@ -11,6 +11,7 @@ import {
 } from '../../src/lib/budget';
 import { loadBudget, setMonthCounted } from '../../src/lib/data';
 import { colors, font, radius } from '../../src/theme';
+import { haptics } from '../../src/lib/haptics';
 
 const isMonth = (m: unknown): m is Month => typeof m === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(m);
 // shortcut: le groupe « charges fixes » est reconnu à son nom ; à remplacer par un drapeau en base si on renomme.
@@ -63,6 +64,7 @@ export default function MonthScreen() {
     ?? data?.monthSettings.find((x) => x.month === month && x.kind === kind)?.plannedCounted ?? true;
   const toggleCounted = async (kind: 'revenu' | 'depense', on: boolean) => {
     const key = `${month}:${kind}`;
+    haptics.tap();
     setPending((p) => ({ ...p, [key]: on }));
     try {
       await setMonthCounted(month, kind, on);

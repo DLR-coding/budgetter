@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GroupKind } from '../lib/budget';
 import type { CategoryRow, GroupRow } from '../lib/data';
 import { colors, font, radius } from '../theme';
+import { haptics } from '../lib/haptics';
 
 type Props = {
   visible: boolean;
@@ -35,7 +36,7 @@ export function CategorySheet({ visible, kind, groups, cats, selectedId, onSelec
                 return (
                   <Pressable key={c.id} style={[s.row, selected && s.rowSelected]}
                     accessibilityRole="button" accessibilityState={{ selected }}
-                    onPress={() => { onSelect(c.id); onClose(); }}>
+                    onPress={() => { haptics.tap(); onSelect(c.id); onClose(); }}>
                     <Text style={[s.rowText, selected && { color: colors.accentText }]}>{c.name}</Text>
                     {selected && <Ionicons name="checkmark" size={18} color={colors.accentText} />}
                   </Pressable>
