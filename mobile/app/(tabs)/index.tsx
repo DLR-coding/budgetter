@@ -4,13 +4,14 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { AdjustBalanceSheet } from '../../src/components/AdjustBalanceSheet';
+import { BudgetAvatar, BudgetSheet } from '../../src/components/BudgetSheet';
 import { RunwayChart } from '../../src/components/RunwayChart';
 import { Card, CircleButton, Divider, ProgressBar } from '../../src/components/ui';
 import {
   addMonths, collapseRows, computedStartCents, formatAmount, formatEuros, groupBreakdown, monthLabel, monthName,
   monthOf, runwayHeadline, splitEuros, type CategoryLine, type Month,
 } from '../../src/lib/budget';
-import { loadBudget, setMonthCounted } from '../../src/lib/data';
+import { loadBudget, loadBudgets, setMonthCounted } from '../../src/lib/data';
 import { colors, font, radius } from '../../src/theme';
 import { haptics } from '../../src/lib/haptics';
 
@@ -26,6 +27,8 @@ export default function MonthScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
+  const [budgetName, setBudgetName] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
   const [expanded, setExpanded] = useState<string[]>([]);
   // Interrupteurs basculés en attente d'enregistrement, par « mois:type » : affichés tout de suite.
   const [pending, setPending] = useState<Record<string, boolean>>({});
@@ -39,7 +42,9 @@ export default function MonthScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await loadBudget(from, to));
+      const [b, bs] = await Promise.all([loadBudget(from, to), loadBudgets()]);
+      setData(b);
+      setBudgetName(bs.budgets.find((x) => x.id === bs.currentId)?.name ?? null);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -103,6 +108,14 @@ export default function MonthScreen() {
 
         {summary && hero && (
           <View style={s.hero}>
+            {budgetName && (
+              <Pressable style={({ pressed }) => [s.budgetPill, pressed && s.pressed]} onPress={() => setSwitching(true)}
+                accessibilityRole="button" accessibilityLabel={`Budget : ${budgetName}. Changer de budget`} hitSlop={6}>
+                <BudgetAvatar name={budgetName} size={22} />
+                <Text style={s.budgetName} numberOfLines={1}>{budgetName}</Text>
+                <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+              </Pressable>
+            )}
             <Text style={s.heroLabel}>Solde {summary.status === 'passe' ? 'final' : 'projeté'} fin {monthName(month)}</Text>
             <Text style={s.heroAmount}>
               {hero.units}<Text style={s.heroRest}>{hero.rest}</Text>
@@ -212,6 +225,8 @@ export default function MonthScreen() {
           );
         })}
 
+        <BudgetSheet visible={switching} onClose={() => setSwitching(false)} onChanged={load} />
+
         {summary && data && (
           <AdjustBalanceSheet
             visible={adjusting} month={month}
@@ -268,6 +283,12 @@ const s = StyleSheet.create({
   monthPillText: { color: colors.text, fontFamily: font.semibold, fontSize: 16 },
 
   hero: { alignItems: 'center', gap: 4 },
+  budgetPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '80%', marginBottom: 10,
+    paddingVertical: 5, paddingLeft: 5, paddingRight: 12, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  budgetName: { flexShrink: 1, color: colors.text, fontFamily: font.medium, fontSize: 14 },
   heroLabel: { color: colors.textSoft, fontFamily: font.regular, fontSize: 15 },
   heroAmount: { color: colors.text, fontFamily: font.semibold, fontSize: 48, letterSpacing: -1.5 },
   heroRest: { color: colors.textMuted, fontSize: 28, letterSpacing: -0.5 },

@@ -14,7 +14,7 @@ export type CategoryRow = {
 const toMonth = (d: string): Month => d.slice(0, 7);
 const toDate = (m: Month) => `${m}-01`;
 
-/** Au premier lancement : crée les catégories de l'Excel, puis les charges récurrentes du mois. */
+/** Au premier lancement : crée « Mon budget » et les catégories de l'Excel, puis les charges récurrentes du mois (budget actif). */
 export async function bootstrap() {
   const { error } = await supabase.rpc('seed_default_categories');
   if (error) throw error;
@@ -189,7 +189,7 @@ export async function replaceEntryLines(entryId: string, lines: EntryLineInput[]
 /** Recale le solde de départ d'un mois (début de mois) sur le solde bancaire réel. */
 export async function setBalanceAdjustment(month: Month, cents: number) {
   const { error } = await supabase.from('balance_adjustments')
-    .upsert({ month: toDate(month), balance_cents: cents }, { onConflict: 'user_id,month' });
+    .upsert({ month: toDate(month), balance_cents: cents }, { onConflict: 'budget_id,month' });
   if (error) throw error;
 }
 
@@ -216,7 +216,7 @@ export async function setCategoryCounted(categoryId: string, month: Month, count
 /** Interrupteur « Compter le prévu » d'ensemble du mois, pour les revenus ou les dépenses. */
 export async function setMonthCounted(month: Month, kind: 'revenu' | 'depense', plannedCounted: boolean) {
   const { error } = await supabase.from('month_settings')
-    .upsert({ month: toDate(month), kind, planned_counted: plannedCounted }, { onConflict: 'user_id,month,kind' });
+    .upsert({ month: toDate(month), kind, planned_counted: plannedCounted }, { onConflict: 'budget_id,month,kind' });
   if (error) throw error;
 }
 
@@ -281,4 +281,50 @@ export async function setRecurrenceActive(id: string, active: boolean) {
   if (active) await skipMissedMonths(id);
   const { error } = await supabase.from('recurrences').update({ active }).eq('id', id);
   if (error) throw error;
+}
+
+// ——— Budgets (migration 0009) : le budget actif est gardé côté serveur, la RLS filtre tout le reste ———
+
+export type BudgetRow = { id: string; name: string; position: number };
+
+/** Budgets de l'utilisateur et id du budget actif. */
+export async function loadBudgets(): Promise<{ budgets: BudgetRow[]; currentId: string | null }> {
+  const [b, p] = await Promise.all([
+    supabase.from('budgets').select('id, name, position').order('position').order('created_at'),
+    supabase.from('profiles').select('current_budget_id').maybeSingle(),
+  ]);
+  if (b.error) throw b.error;
+  if (p.error) throw p.error;
+  return { budgets: b.data as BudgetRow[], currentId: p.data?.current_budget_id ?? null };
+}
+
+/** Rend un budget actif, puis génère ses charges récurrentes du mois. */
+export async function switchBudget(id: string) {
+  const { error } = await supabase.rpc('set_current_budget', { p_budget_id: id });
+  if (error) throw error;
+  await bootstrap();
+}
+
+/** Nouveau budget vide (trois groupes sans catégorie), qui devient actif. */
+export async function createBudget(name: string) {
+  const { error } = await supabase.rpc('create_budget', { p_name: name });
+  if (error) throw error;
+}
+
+export async function renameBudget(id: string, name: string) {
+  const { error } = await supabase.from('budgets').update({ name: name.trim() }).eq('id', id);
+  if (error) throw error;
+}
+
+/** Supprime un budget et tout son contenu, puis ses photos de tickets. Refusé pour le dernier budget. */
+export async function deleteBudget(id: string) {
+  const { data, error } = await supabase.rpc('delete_budget', { p_budget_id: id });
+  if (error) throw error;
+  const paths = (data ?? []) as string[];
+  if (paths.length) {
+    // Le budget est déjà supprimé : des photos restées orphelines ne doivent pas faire croire à un échec.
+    const { error: e2 } = await supabase.storage.from('receipts').remove(paths);
+    if (e2) console.warn('Photos de tickets non supprimées', e2.message);
+  }
+  await bootstrap(); // le budget actif a pu changer
 }

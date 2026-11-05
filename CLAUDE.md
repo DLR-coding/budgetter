@@ -29,6 +29,9 @@ Toujours s'y conformer avant d'inventer une mise en page.
 
 ## Modèle de données (voir la migration)
 
+`budgets` : plusieurs budgets séparés par utilisateur (« comme des comptes »). Le budget actif est
+`profiles.current_budget_id` ; la RLS de chaque table filtre sur ce budget et `budget_id` prend par
+défaut le budget actif : le code client ne filtre jamais lui-même par budget (migration 0009).
 `groups` → `categories` (prévu par défaut) → `planned_overrides` (prévu propre à un mois).
 Une **saisie** (`entries`) = un achat/ticket/revenu, composée de **lignes** (`entry_lines`) :
 libellé, quantité, prix unitaire, catégorie. Une dépense simple = 1 ligne.

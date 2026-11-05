@@ -4,11 +4,14 @@ import { Fragment, useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AiSettingsSheet } from '../../src/components/AiSettingsSheet';
+import { BudgetAvatar, BudgetEditSheet, BudgetSheet } from '../../src/components/BudgetSheet';
 import { CategoryEditSheet } from '../../src/components/CategoryEditSheet';
 import { Card, Divider, ListRow, SectionTitle } from '../../src/components/ui';
 import { loadAiSettings } from '../../src/lib/ai-settings';
 import { formatEuros } from '../../src/lib/budget';
-import { loadCategories, loadRecurrences, type CategoryRow, type GroupRow, type RecurrenceRow } from '../../src/lib/data';
+import {
+  loadBudgets, loadCategories, loadRecurrences, type BudgetRow, type CategoryRow, type GroupRow, type RecurrenceRow,
+} from '../../src/lib/data';
 import { aiSettingsSummary, type AiSettings } from '../../src/lib/receipt';
 import { dayLabel, groupValue } from '../../src/lib/settings';
 import { colors, font } from '../../src/theme';
@@ -24,11 +27,15 @@ export default function SettingsScreen() {
   const [adding, setAdding] = useState(false);
   const [ai, setAi] = useState<AiSettings | null>(null);
   const [editingAi, setEditingAi] = useState(false);
+  const [budgets, setBudgets] = useState<{ budgets: BudgetRow[]; currentId: string | null }>({ budgets: [], currentId: null });
+  const [editingBudget, setEditingBudget] = useState<BudgetRow | null>(null);
+  const [switching, setSwitching] = useState(false);
   const loadAi = useCallback(() => { loadAiSettings().then(setAi, () => setAi(null)); }, []);
 
   const load = useCallback(async () => {
     try {
-      const [c, r] = await Promise.all([loadCategories(), loadRecurrences()]);
+      const [c, r, b] = await Promise.all([loadCategories(), loadRecurrences(), loadBudgets()]);
+      setBudgets(b);
       setGroups(c.groups);
       setCats(c.cats);
       setRecs(r);
@@ -48,6 +55,17 @@ export default function SettingsScreen() {
     <ScrollView style={s.screen} contentContainerStyle={[s.content, { paddingTop: insets.top + 40 }]}>
       <Text style={s.title} accessibilityRole="header">Réglages</Text>
       {error && <Text style={s.error}>Impossible de charger les réglages : {error}</Text>}
+
+      <SectionTitle title="Budgets" right={{ label: 'Changer', onPress: () => setSwitching(true) }} />
+      <Card>
+        {budgets.budgets.map((b, i) => (
+          <Fragment key={b.id}>
+            {i > 0 && <Divider />}
+            <ListRow label={b.name} left={<BudgetAvatar name={b.name} />} chevron valueTone="muted"
+              value={b.id === budgets.currentId ? 'Actif' : undefined} onPress={() => setEditingBudget(b)} />
+          </Fragment>
+        ))}
+      </Card>
 
       <SectionTitle title="Catégories et prévus" right={{ label: 'Ajouter', onPress: () => setAdding(true) }} />
       <Card>
@@ -88,6 +106,9 @@ export default function SettingsScreen() {
       </Card>
 
       <CategoryEditSheet visible={adding} groups={groups} category={null} onClose={() => setAdding(false)} onSaved={load} />
+      <BudgetSheet visible={switching} onClose={() => setSwitching(false)} onChanged={load} />
+      <BudgetEditSheet budget={editingBudget} isLast={budgets.budgets.length <= 1}
+        onClose={() => setEditingBudget(null)} onSaved={load} />
       <AiSettingsSheet visible={editingAi} current={ai} onClose={() => setEditingAi(false)} onSaved={loadAi} />
     </ScrollView>
   );
