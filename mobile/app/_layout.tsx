@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Login } from '../src/components/Login';
 import { monthOf } from '../src/lib/budget';
 import { bootstrap } from '../src/lib/data';
@@ -43,7 +44,7 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="light" />
       {session ? (
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
@@ -60,6 +61,6 @@ export default function RootLayout() {
       ) : (
         <Login />
       )}
-    </>
+    </GestureHandlerRootView>
   );
 }

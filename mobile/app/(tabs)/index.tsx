@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { AdjustBalanceSheet } from '../../src/components/AdjustBalanceSheet';
 import { RunwayChart } from '../../src/components/RunwayChart';
 import { Card, CircleButton, Divider, ProgressBar } from '../../src/components/ui';
@@ -49,6 +50,13 @@ export default function MonthScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  const goMonth = (n: number) => { haptics.tap(); setMonth((m) => addMonths(m, n)); };
+  // Glisser à gauche : mois suivant ; à droite : précédent. Seulement un geste franchement horizontal.
+  const swipe = usePanGesture({
+    activeOffsetX: [-25, 25], failOffsetY: [-15, 15], runOnJS: true,
+    onDeactivate: (e) => { if (!e.canceled && Math.abs(e.translationX) > 60) goMonth(e.translationX < 0 ? 1 : -1); },
+  });
+
   const summary = data?.summaries.find((x) => x.month === month);
   const horizon = useMemo(() => {
     const i = data?.summaries.findIndex((x) => x.month === current) ?? -1;
@@ -79,129 +87,131 @@ export default function MonthScreen() {
   const hero = summary ? splitEuros(summary.endCents) : null;
 
   return (
-    <ScrollView
-      style={s.screen}
-      contentContainerStyle={s.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
-    >
-      <View style={s.monthRow}>
-        <CircleButton icon="chevron-back" accessibilityLabel="Mois précédent" onPress={() => setMonth(addMonths(month, -1))} />
-        <View style={s.monthPill}><Text style={s.monthPillText}>{monthLabel(month)}</Text></View>
-        <CircleButton icon="chevron-forward" accessibilityLabel="Mois suivant" onPress={() => setMonth(addMonths(month, 1))} />
-      </View>
-
-      {error && <Text style={s.error}>Impossible de charger le budget : {error}</Text>}
-
-      {summary && hero && (
-        <View style={s.hero}>
-          <Text style={s.heroLabel}>Solde {summary.status === 'passe' ? 'final' : 'projeté'} fin {monthName(month)}</Text>
-          <Text style={s.heroAmount}>
-            {hero.units}<Text style={s.heroRest}>{hero.rest}</Text>
-          </Text>
-          <View style={s.startPill}>
-            <Text style={s.startText}>Départ {formatEuros(summary.startCents)}</Text>
-            <Pressable accessibilityRole="button" onPress={() => setAdjusting(true)} hitSlop={10}>
-              <Text style={s.adjust}>Ajuster</Text>
-            </Pressable>
-          </View>
+    <GestureDetector gesture={swipe}>
+      <ScrollView
+        style={s.screen}
+        contentContainerStyle={s.content}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
+      >
+        <View style={s.monthRow}>
+          <CircleButton icon="chevron-back" accessibilityLabel="Mois précédent" onPress={() => goMonth(-1)} />
+          <View style={s.monthPill}><Text style={s.monthPillText}>{monthLabel(month)}</Text></View>
+          <CircleButton icon="chevron-forward" accessibilityLabel="Mois suivant" onPress={() => goMonth(1)} />
         </View>
-      )}
 
-      {headline && (
-        <Pressable accessibilityRole="button" onPress={() => router.push('/projection')}
-          style={({ pressed }) => [s.card, s.runway, pressed && s.pressed]}>
-          <View style={s.runwayHead}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.runwayLead}>{headline.lead}</Text>
-              <Text style={s.runwayTitle}>{headline.title}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </View>
-          <RunwayChart months={horizon} currentMonth={current} />
-        </Pressable>
-      )}
+        {error && <Text style={s.error}>Impossible de charger le budget : {error}</Text>}
 
-      {summary && (
-        <View style={s.row2}>
-          <View style={[s.card, s.flowCard]}>
-            <View style={s.flowHead}>
-              <View style={[s.flowIcon, { backgroundColor: colors.incomeBg }]}>
-                <Ionicons name="arrow-down" size={15} color={colors.income} style={s.rotate} />
-              </View>
-              <Text style={s.flowLabel}>Revenus</Text>
-            </View>
-            {/* Gros montant = ce qui compte dans le solde (« Revenu total » de l'Excel). */}
-            <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(summary.incomeCents, true)}</Text>
-            <Text style={s.flowPlanned}>
-              {formatAmount(summary.actualIncomeCents)} reçus · {formatAmount(summary.plannedIncomeCents)} prévus
+        {summary && hero && (
+          <View style={s.hero}>
+            <Text style={s.heroLabel}>Solde {summary.status === 'passe' ? 'final' : 'projeté'} fin {monthName(month)}</Text>
+            <Text style={s.heroAmount}>
+              {hero.units}<Text style={s.heroRest}>{hero.rest}</Text>
             </Text>
-            {summary.status !== 'passe' && (
-              <CountedSwitch value={counted('revenu')} label="Compter le prévu des revenus"
-                onChange={(on) => toggleCounted('revenu', on)} />
-            )}
-          </View>
-          <View style={[s.card, s.flowCard]}>
-            <View style={s.flowHead}>
-              <View style={[s.flowIcon, { backgroundColor: colors.warnBg }]}>
-                <Ionicons name="arrow-up" size={15} color={colors.warn} style={s.rotate} />
-              </View>
-              <Text style={s.flowLabel}>Dépenses</Text>
+            <View style={s.startPill}>
+              <Text style={s.startText}>Départ {formatEuros(summary.startCents)}</Text>
+              <Pressable accessibilityRole="button" onPress={() => setAdjusting(true)} hitSlop={10}>
+                <Text style={s.adjust}>Ajuster</Text>
+              </Pressable>
             </View>
-            <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(-summary.expenseCents)}</Text>
-            <Text style={s.flowPlanned}>
-              {formatAmount(summary.actualExpenseCents)} dépensés · {formatAmount(summary.plannedExpenseCents)} prévus
-            </Text>
-            {summary.status !== 'passe' && (
-              <CountedSwitch value={counted('depense')} label="Compter le prévu des dépenses"
-                onChange={(on) => toggleCounted('depense', on)} />
-            )}
           </View>
-        </View>
-      )}
+        )}
 
-      {groups.map((g) => {
-        const open = expanded.includes(g.id);
-        const { shown, rest } = isFixedGroup(g.name) && !open
-          ? collapseRows(g.categories, 2) : { shown: g.categories, rest: null };
-        return (
-          <View key={g.id} style={{ gap: 12 }}>
-            <View style={s.groupHead}>
-              <Text style={s.groupName} accessibilityRole="header">{g.name}</Text>
-              <Text style={s.groupTotal}>{formatAmount(g.actualCents)} / {formatEuros(g.plannedCents)}</Text>
+        {headline && (
+          <Pressable accessibilityRole="button" onPress={() => router.push('/projection')}
+            style={({ pressed }) => [s.card, s.runway, pressed && s.pressed]}>
+            <View style={s.runwayHead}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.runwayLead}>{headline.lead}</Text>
+                <Text style={s.runwayTitle}>{headline.title}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
             </View>
-            <Card>
-              {shown.map((c, i) => (
-                <Fragment key={c.id}>
-                  {i > 0 && <Divider />}
-                  <CategoryRow line={c} month={month} />
-                </Fragment>
-              ))}
-              {rest && (
-                <>
-                  <Divider />
-                  <Pressable accessibilityRole="button" onPress={() => setExpanded([...expanded, g.id])}
-                    style={({ pressed }) => [s.catRow, pressed && s.pressed]}>
-                    <View style={s.catLine}>
-                      <Text style={s.restText}>+ {rest.count} {rest.count > 1 ? 'autres charges' : 'autre charge'}</Text>
-                      <Text style={s.restText}>{formatEuros(rest.actualCents)}</Text>
-                    </View>
-                  </Pressable>
-                </>
+            <RunwayChart months={horizon} currentMonth={current} />
+          </Pressable>
+        )}
+
+        {summary && (
+          <View style={s.row2}>
+            <View style={[s.card, s.flowCard]}>
+              <View style={s.flowHead}>
+                <View style={[s.flowIcon, { backgroundColor: colors.incomeBg }]}>
+                  <Ionicons name="arrow-down" size={15} color={colors.income} style={s.rotate} />
+                </View>
+                <Text style={s.flowLabel}>Revenus</Text>
+              </View>
+              {/* Gros montant = ce qui compte dans le solde (« Revenu total » de l'Excel). */}
+              <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(summary.incomeCents, true)}</Text>
+              <Text style={s.flowPlanned}>
+                {formatAmount(summary.actualIncomeCents)} reçus · {formatAmount(summary.plannedIncomeCents)} prévus
+              </Text>
+              {summary.status !== 'passe' && (
+                <CountedSwitch value={counted('revenu')} label="Compter le prévu des revenus"
+                  onChange={(on) => toggleCounted('revenu', on)} />
               )}
-            </Card>
+            </View>
+            <View style={[s.card, s.flowCard]}>
+              <View style={s.flowHead}>
+                <View style={[s.flowIcon, { backgroundColor: colors.warnBg }]}>
+                  <Ionicons name="arrow-up" size={15} color={colors.warn} style={s.rotate} />
+                </View>
+                <Text style={s.flowLabel}>Dépenses</Text>
+              </View>
+              <Text style={s.flowAmount} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(-summary.expenseCents)}</Text>
+              <Text style={s.flowPlanned}>
+                {formatAmount(summary.actualExpenseCents)} dépensés · {formatAmount(summary.plannedExpenseCents)} prévus
+              </Text>
+              {summary.status !== 'passe' && (
+                <CountedSwitch value={counted('depense')} label="Compter le prévu des dépenses"
+                  onChange={(on) => toggleCounted('depense', on)} />
+              )}
+            </View>
           </View>
-        );
-      })}
+        )}
 
-      {summary && data && (
-        <AdjustBalanceSheet
-          visible={adjusting} month={month}
-          computedCents={computedStartCents(data.summaries, month)}
-          onClose={() => setAdjusting(false)}
-          onSaved={() => { setAdjusting(false); load(); }}
-        />
-      )}
-    </ScrollView>
+        {groups.map((g) => {
+          const open = expanded.includes(g.id);
+          const { shown, rest } = isFixedGroup(g.name) && !open
+            ? collapseRows(g.categories, 2) : { shown: g.categories, rest: null };
+          return (
+            <View key={g.id} style={{ gap: 12 }}>
+              <View style={s.groupHead}>
+                <Text style={s.groupName} accessibilityRole="header">{g.name}</Text>
+                <Text style={s.groupTotal}>{formatAmount(g.actualCents)} / {formatEuros(g.plannedCents)}</Text>
+              </View>
+              <Card>
+                {shown.map((c, i) => (
+                  <Fragment key={c.id}>
+                    {i > 0 && <Divider />}
+                    <CategoryRow line={c} month={month} />
+                  </Fragment>
+                ))}
+                {rest && (
+                  <>
+                    <Divider />
+                    <Pressable accessibilityRole="button" onPress={() => setExpanded([...expanded, g.id])}
+                      style={({ pressed }) => [s.catRow, pressed && s.pressed]}>
+                      <View style={s.catLine}>
+                        <Text style={s.restText}>+ {rest.count} {rest.count > 1 ? 'autres charges' : 'autre charge'}</Text>
+                        <Text style={s.restText}>{formatEuros(rest.actualCents)}</Text>
+                      </View>
+                    </Pressable>
+                  </>
+                )}
+              </Card>
+            </View>
+          );
+        })}
+
+        {summary && data && (
+          <AdjustBalanceSheet
+            visible={adjusting} month={month}
+            computedCents={computedStartCents(data.summaries, month)}
+            onClose={() => setAdjusting(false)}
+            onSaved={() => { setAdjusting(false); load(); }}
+          />
+        )}
+      </ScrollView>
+    </GestureDetector>
   );
 }
 
