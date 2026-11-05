@@ -2,7 +2,7 @@ import { Canvas, Fill, Group, ImageShader, Shader, type SkFont, Text as SkText, 
 import { router } from 'expo-router';
 import { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react';
 import { PixelRatio, Pressable, StyleSheet, View } from 'react-native';
-import { useDerivedValue, useSharedValue, withSpring } from 'react-native-reanimated';
+import { type SharedValue, useDerivedValue, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +28,14 @@ const PD = PixelRatio.get();
 const BAR_TINT = tintUniform(colors.bg, glass.barTint);
 const LENS_TINT = tintUniform(colors.text, glass.lensTint);
 const FAB_TINT = tintUniform(colors.accent, glass.fabTint);
+// Appui, d'après la référence (press-effects.js, DEFAULT_NAVIGATION_LENS) : arrivée ferme,
+// relâchement un peu plus souple.
+const PRESS_IN = { stiffness: 520, damping: 28 };
+const PRESS_OUT = { stiffness: 540, damping: 31 };
+const LENS_GROW_X = 0.13;  // lentille tenue : 13 % plus large
+const LENS_HELD_H = 1.24;  // … et 1,24 fois la hauteur de la barre (elle en dépasse)
+const FAB_GROW = 0.075;    // bouton : gonfle de 7,5 %
+const FAB_BLOOM = 0.35;    // … et sa teinte s'éclaircit vers le blanc
 
 type Placement = { strip: Strip; left: number }; // left : x de la barre dans la scène
 
@@ -67,30 +75,52 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   const lead = useSharedValue(0);
   const trail = useSharedValue(0);
   const placed = useRef(false);
+  // Ressorts presque critiques : la goutte s'étire puis se pose, sans rebond.
+  const moveLens = (i: number) => {
+    lead.value = withSpring(tabX(i), { damping: 34, stiffness: 320 });
+    trail.value = withSpring(tabX(i), { damping: 27, stiffness: 180 });
+  };
   useEffect(() => {
     if (!width || !placement) return;
-    const x = tabX(state.index);
-    if (!placed.current) { lead.value = x; trail.value = x; placed.current = true; return; }
-    // Ressorts presque critiques : la goutte s'étire puis se pose, sans rebond.
-    lead.value = withSpring(x, { damping: 34, stiffness: 320 });
-    trail.value = withSpring(x, { damping: 27, stiffness: 180 });
+    if (!placed.current) { lead.value = tabX(state.index); trail.value = lead.value; placed.current = true; return; }
+    moveLens(state.index);
   }, [state.index, width, placement]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Appui (comme la référence) : la lentille tenue s'élargit, dépasse de la barre, devient
+  // claire et écrase ce qu'on voit au travers ; le « + » gonfle et s'éclaircit.
+  const lensPress = useSharedValue(0);
+  const fabPress = useSharedValue(0);
+  const pressIn = (v: SharedValue<number>) => { v.value = withSpring(1, PRESS_IN); };
+  const pressOut = (v: SharedValue<number>) => { v.value = withSpring(0, PRESS_OUT); };
+  const index = useRef(state.index);
+  index.current = state.index;
+  const navigated = useRef(false);
+
   const cy = MARGIN + BAR_H / 2;
-  const uniforms = useDerivedValue(() => ({
-    pd: PD,
-    barC: [left + barW / 2, cy],
-    barH: [barW / 2, BAR_H / 2],
-    lead: [lead.value, cy],
-    trail: [trail.value, cy],
-    lensH: [tabW / 2, LENS_H / 2],
-    fabC: [left + barW + FAB_GAP + BAR_H / 2, cy],
-    fabR: BAR_H / 2,
-    lightDir: LIGHT_DIR,
-    barTint: BAR_TINT,
-    lensTint: LENS_TINT,
-    fabTint: FAB_TINT,
-  }), [left, barW, tabW]);
+  const uniforms = useDerivedValue(() => {
+    const lp = Math.min(1, lensPress.value);
+    const fp = Math.min(1, fabPress.value);
+    return {
+      pd: PD,
+      barC: [left + barW / 2, cy],
+      barH: [barW / 2, BAR_H / 2],
+      lead: [lead.value, cy],
+      trail: [trail.value, cy],
+      lensH: [(tabW / 2) * (1 + LENS_GROW_X * lp), LENS_H / 2 + (BAR_H * LENS_HELD_H - LENS_H) / 2 * lp],
+      fabC: [left + barW + FAB_GAP + BAR_H / 2, cy],
+      fabR: (BAR_H / 2) * (1 + FAB_GROW * fp),
+      lightDir: LIGHT_DIR,
+      barTint: BAR_TINT,
+      lensTint: [LENS_TINT[0], LENS_TINT[1], LENS_TINT[2], LENS_TINT[3] * (1 - lp)],
+      fabTint: [
+        FAB_TINT[0] + (1 - FAB_TINT[0]) * FAB_BLOOM * fp,
+        FAB_TINT[1] + (1 - FAB_TINT[1]) * FAB_BLOOM * fp,
+        FAB_TINT[2] + (1 - FAB_TINT[2]) * FAB_BLOOM * fp,
+        FAB_TINT[3],
+      ],
+      lensPress: lp,
+    };
+  }, [left, barW, tabW]);
 
   return (
     <View
@@ -137,13 +167,26 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
                 accessibilityRole="tab"
                 accessibilityLabel={LABELS[route.name] ?? route.name}
                 accessibilityState={{ selected: focused }}
-                onPress={() => { if (!focused) { haptics.tap(); navigateToTab(route.key); } }}
+                onPressIn={() => { navigated.current = false; moveLens(i); pressIn(lensPress); }}
+                onPressOut={() => {
+                  pressOut(lensPress);
+                  // Appui annulé (doigt glissé hors de l'onglet) : la lentille revient à l'onglet affiché.
+                  // onPress arrive juste après onPressOut, d'où le report d'une image.
+                  requestAnimationFrame(() => { if (!navigated.current) moveLens(index.current); });
+                }}
+                onPress={() => { navigated.current = true; if (!focused) { haptics.tap(); navigateToTab(route.key); } }}
                 style={styles.tab}
               />
             );
           })}
         </View>
-        <Pressable accessibilityLabel="Nouvelle saisie" onPress={() => { haptics.press(); router.push('/saisie'); }} style={styles.fabTouch}>
+        <Pressable
+          accessibilityLabel="Nouvelle saisie"
+          onPressIn={() => pressIn(fabPress)}
+          onPressOut={() => pressOut(fabPress)}
+          onPress={() => { haptics.press(); router.push('/saisie'); }}
+          style={styles.fabTouch}
+        >
           <Ionicons name="add" size={28} color={colors.accentInk} />
         </Pressable>
       </View>

@@ -8,7 +8,8 @@ import { Skia } from 'react-native-skia';
 // par smooth min, comme dans la vidéo de W. Candillon) et le bouton « + » (cercle).
 // Coordonnées en dp ; pd ne sert qu'aux largeurs d'anticrénelage et du liseré.
 // Écarts avec l'original : pas de mipmaps (flous approchés par 5 lectures), pas de
-// conversion sRGB, pas d'appui (pressure), un seul jeu de formes fixe.
+// conversion sRGB, un seul jeu de formes fixe. L'appui (lentille tenue, bouton qui gonfle)
+// reprend playground/main.js et src/controls.js de la même référence.
 
 const GLASS_SKSL = `
 uniform shader backdrop;
@@ -24,12 +25,19 @@ uniform float2 lightDir;
 uniform float4 barTint;   // rgb + opacité de teinte
 uniform float4 lensTint;
 uniform float4 fabTint;
+uniform float lensPress;  // 0 au repos, 1 lentille tenue (appui sur un onglet)
 
-// Matériau V2 par défaut (DEFAULT_MATERIAL_V2).
-const float REFRACTION = 84.0;
+// Matériau V2 par défaut (DEFAULT_MATERIAL_V2) ; la lentille tenue passe au matériau
+// PRESSED_CONTROL_MATERIAL_V2 (réfraction 17, sans dispersion).
+const float REFRACTION_REST = 84.0;
+const float REFRACTION_HELD = 17.0;
+const float DISPERSION_REST = 2.0;
 const float EDGE_REACH = 0.14;
 const float EDGE_WIDTH = 0.21;
-const float DISPERSION = 2.0;
+// Écrasement de la lentille tenue (PRESS_SQUASH < 1 pour ne pas replier l'image) et poids
+// par axe (DEFAULT_NAVIGATION_LENS : innerLength 0, innerHeight 0.24).
+const float PRESS_SQUASH = 0.85;
+const float2 PRESS_AXES = float2(1.0, 0.76);
 const float BODY = 0.72;
 const float ABSORPTION = 0.58;
 const float RIM = 0.24;
@@ -128,6 +136,9 @@ half4 main(float2 point) {
   }
   if (chosen < 0) return half4(0.0);
 
+  float pressure = chosen == 1 ? clamp(lensPress, 0.0, 1.0) : 0.0;
+  float refraction = mix(REFRACTION_REST, REFRACTION_HELD, pressure);
+  float dispersion = mix(DISPERSION_REST, 0.0, pressure);
   float2 center = shapeCenter(chosen);
   float2 halfSize = shapeHalf(chosen);
   float minHalf = min(halfSize.x, halfSize.y);
@@ -150,12 +161,17 @@ half4 main(float2 point) {
   float opticalNormalMix = smoothstep(0.12, 0.55, captureX);
   float2 bendNormal = normalize(mix(normal, opticalNormal(chosen, point, normal), opticalNormalMix));
   float captureDistance = EDGE_REACH * minHalf * 2.0 * 1.24 * captureProfile;
-  float2 lensShift = -bendNormal * (REFRACTION * refractionProfile * 0.32 + captureDistance);
-  lensShift += -local * (REFRACTION * 0.035) * smoothstep(0.16, 0.92, depth);
-  float2 chromaShift = bendNormal * DISPERSION * (0.32 + edgeCurve * 0.95);
-  float2 pR = point + lensShift * (1.0 + DISPERSION * 0.009) + chromaShift;
+  float2 lensShift = -bendNormal * (refraction * refractionProfile * 0.32 + captureDistance);
+  lensShift += -local * (refraction * 0.035) * smoothstep(0.16, 0.92, depth);
+  // Lentille tenue : surface enfoncée qui écrase ce qu'on voit au travers ; le déplacement
+  // suit la normale du contour, nul sur l'axe central et au bord.
+  float pressDepth = clamp(edgeDepth / max(minHalf, 1.0), 0.0, 1.0);
+  lensShift *= 1.0 - pressure * 0.35;
+  lensShift += normal * PRESS_AXES * (PRESS_SQUASH * minHalf * pressure * pressDepth * (1.0 - pressDepth));
+  float2 chromaShift = bendNormal * dispersion * (0.32 + edgeCurve * 0.95);
+  float2 pR = point + lensShift * (1.0 + dispersion * 0.009) + chromaShift;
   float2 pG = point + lensShift;
-  float2 pB = point + lensShift * (1.0 - DISPERSION * 0.011) - chromaShift;
+  float2 pB = point + lensShift * (1.0 - dispersion * 0.011) - chromaShift;
 
   float3 sr = sharp(pR);
   float3 sg = sharp(pG);
@@ -187,7 +203,7 @@ half4 main(float2 point) {
   float3 color = transmitted;
   float rimMix = clamp((thinRim * 0.42 + innerRim * 0.18 + fresnel * 0.10) * RIM * REFLECTION, 0.0, 0.72);
   if (rimMix > 0.0005) {
-    float3 reflected = softBackdrop(point + normal * (8.0 + REFRACTION * 0.17), 5.2);
+    float3 reflected = softBackdrop(point + normal * (8.0 + refraction * 0.17), 5.2);
     float3 adaptiveRim = reflected * 1.45 + float3(0.06, 0.035, 0.08);
     adaptiveRim = mix(adaptiveRim, float3(0.96, 0.97, 1.0), 0.24);
     adaptiveRim = mix(adaptiveRim, float3(0.035, 0.025, 0.045), smoothstep(0.78, 0.98, luminance(reflected)) * 0.48);
