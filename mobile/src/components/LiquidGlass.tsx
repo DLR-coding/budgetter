@@ -46,8 +46,8 @@ half4 main(float2 p) {
 `);
 
 // Lentille liquide : deux pilules (tête et traîne) fusionnées par smooth min, qui grossissent et
-// réfractent ce qui est dessiné dessous dans le canevas. xy arrive en coordonnées locales (dp) ;
-// pd ne sert qu'à lisser le bord sur un pixel physique.
+// réfractent ce qui est dessiné dessous dans le canevas. xy arrive en pixels physiques : le
+// BackdropFilter doit être posé dans un Group à l'échelle 1/pd (sinon rendu en dp, pixellisé).
 export const LENS = compile(`
 uniform shader image;
 uniform float pd;
@@ -61,7 +61,7 @@ float sdf(float2 p) {
   return smin(sdBox(p - lead, halfSize, radius), sdBox(p - trail, halfSize, radius), 14.0);
 }
 half4 main(float2 xy) {
-  float2 p = xy;
+  float2 p = xy / pd;
   half4 base = image.eval(xy);
   float d = sdf(p);
   if (d > 1.0) return base;
@@ -73,9 +73,9 @@ half4 main(float2 xy) {
   float2 q = lead + (p - lead) / 1.15 + n * bend * 9.0;
   // Aberration chromatique : chaque canal est dévié un peu différemment.
   float2 off = n * bend * 1.5;
-  half4 sr = image.eval(q + off);
-  half4 sg = image.eval(q);
-  half4 sb = image.eval(q - off);
+  half4 sr = image.eval((q + off) * pd);
+  half4 sg = image.eval(q * pd);
+  half4 sb = image.eval((q - off) * pd);
   half4 col = half4(sr.r, sg.g, sb.b, max(max(sr.a, sg.a), sb.a));
   col += half4(tint.rgb * tint.a, tint.a) * (1.0 - col.a);
   float rim = rimLight(d, n, 2.5) * rimColor.a;

@@ -44,8 +44,9 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
     if (!width) return;
     const x = centerX(state.index);
     if (!placed.current) { lead.value = x; trail.value = x; placed.current = true; return; }
-    lead.value = withSpring(x, { damping: 16, stiffness: 240 });
-    trail.value = withSpring(x, { damping: 18, stiffness: 110 });
+    // Ressorts presque critiques : la goutte s'étire puis se pose, sans rebond.
+    lead.value = withSpring(x, { damping: 34, stiffness: 320 });
+    trail.value = withSpring(x, { damping: 27, stiffness: 180 });
   }, [state.index, width]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lensUniforms = useDerivedValue(() => ({
@@ -75,7 +76,10 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
                 </Group>
               );
             })}
-            <BackdropFilter filter={<RuntimeShader source={LENS} uniforms={lensUniforms} />} />
+            {/* Échelle 1/pd : le filtre est calculé en pixels physiques, pas en dp (sinon pixellisé). */}
+            <Group transform={[{ scale: 1 / PIXEL_RATIO }]}>
+              <BackdropFilter filter={<RuntimeShader source={LENS} uniforms={lensUniforms} />} />
+            </Group>
           </Canvas>
         )}
         <GlassRim width={width} height={BAR_H} radius={BAR_H / 2} />
