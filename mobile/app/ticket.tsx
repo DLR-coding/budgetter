@@ -2,15 +2,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategorySheet } from '../src/components/CategorySheet';
-import { Banner, CategoryPill, CircleButton, Divider, PrimaryButton, ScreenHeader } from '../src/components/ui';
-import { formatAmount, formatEuros, tintFor } from '../src/lib/budget';
+import { Banner, BottomSheet, CategoryPill, CircleButton, Divider, PrimaryButton, ScreenHeader } from '../src/components/ui';
+import { isoDate } from '../src/lib/articles';
+import { formatAmount, formatEuros, monthLabel, monthOf, tintFor } from '../src/lib/budget';
 import { loadCategories, saveEntry, type CategoryRow, type GroupRow } from '../src/lib/data';
 import {
-  canSave, linesTotal, matchesTotal, needsReview, receiptDate, receiptSubtitle, removeLine, setLineCategory, toSaveLines,
-  type ParsedReceipt,
+  applyLineForm, canSave, lineForm, linesTotal, matchesTotal, needsReview, receiptDate, receiptSubtitle, removeLine,
+  setLineCategory, toSaveLines, type LineForm, type ParsedReceipt,
 } from '../src/lib/receipt';
 import { loadAiSettings } from '../src/lib/ai-settings';
 import { MISSING_AI_SETTINGS, parseReceipt, removeReceipt, takeReceiptPhoto, uploadReceipt } from '../src/lib/receipts';
@@ -31,6 +33,8 @@ export default function Ticket() {
   const [editing, setEditing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [lineEdit, setLineEdit] = useState<{ index: number | null; form: LineForm } | null>(null); // index null : nouvel article
+  const [merchantText, setMerchantText] = useState<string | null>(null);
 
   /** Envoi (s'il n'est pas déjà fait) et lecture en parallèle. */
   async function analyse() {
@@ -142,6 +146,18 @@ export default function Ticket() {
   const total = linesTotal(lines);
   const catById = new Map(cats.map((c) => [c.id, c]));
   const groupById = new Map(groups.map((g) => [g.id, g]));
+  const date = receiptDate(receipt.date);
+  const otherMonth = monthOf(date) !== monthOf(new Date());
+  const edited = lineEdit ? applyLineForm(lines, lineEdit.index, lineEdit.form) : null;
+  const setForm = (patch: Partial<LineForm>) => lineEdit && setLineEdit({ ...lineEdit, form: { ...lineEdit.form, ...patch } });
+
+  const pickDate = () => {
+    const [y, m, d] = date.split('-').map(Number);
+    DateTimePickerAndroid.open({
+      value: new Date(y, m - 1, d), mode: 'date',
+      onChange: (ev, picked) => { if (ev.type === 'set' && picked) setReceipt({ ...receipt, date: isoDate(picked) }); },
+    });
+  };
 
   return (
     <View style={s.screen}>
@@ -152,11 +168,21 @@ export default function Ticket() {
             <Ionicons name="receipt-outline" size={24} color={colors.textMuted} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={s.merchantName} numberOfLines={1}>{receipt.merchant ?? 'Ticket'}</Text>
-            <Text style={s.muted} numberOfLines={1}>{receiptSubtitle(receipt.date, lines.length)}</Text>
+            <Pressable onPress={() => setMerchantText(receipt.merchant ?? '')} accessibilityRole="button"
+              accessibilityLabel={`Commerçant : ${receipt.merchant ?? 'aucun'}. Modifier`} hitSlop={6}>
+              <Text style={s.merchantName} numberOfLines={1}>{receipt.merchant ?? 'Ticket'}</Text>
+            </Pressable>
+            <Pressable onPress={pickDate} accessibilityRole="button" accessibilityLabel="Modifier la date du ticket" hitSlop={6}>
+              <Text style={s.muted} numberOfLines={1}>{receiptSubtitle(date, lines.length)}</Text>
+            </Pressable>
           </View>
           <Text style={s.merchantTotal}>{formatEuros(receipt.total_cents ?? total)}</Text>
         </View>
+
+        {otherMonth && (
+          <Banner tone="warn" icon="calendar-outline"
+            text={`Ce ticket sera classé en ${monthLabel(monthOf(date)).toLowerCase()} : touche la date pour la changer`} />
+        )}
 
         {match != null && (match
           ? <Banner tone="ok" icon="checkmark" text="La somme des lignes correspond au total du ticket" />
@@ -171,8 +197,10 @@ export default function Ticket() {
               return (
                 <View key={i}>
                   {i > 0 && <Divider />}
-                  <Pressable style={s.line} onLongPress={() => setReceipt({ ...receipt, lines: removeLine(lines, i) })}
-                    accessibilityHint="Appui long pour retirer la ligne">
+                  <Pressable style={({ pressed }) => [s.line, pressed && s.pressed]}
+                    onPress={() => setLineEdit({ index: i, form: lineForm(l) })}
+                    onLongPress={() => setReceipt({ ...receipt, lines: removeLine(lines, i) })}
+                    accessibilityRole="button" accessibilityHint="Touche pour modifier, appui long pour retirer la ligne">
                     <View style={s.lineText}>
                       <Text style={s.lineLabel} numberOfLines={1}>
                         {l.label || l.raw_label}
@@ -190,6 +218,12 @@ export default function Ticket() {
             })}
           </View>
         )}
+
+        <Pressable onPress={() => setLineEdit({ index: null, form: lineForm() })} accessibilityRole="button"
+          style={({ pressed }) => [s.addLine, pressed && s.pressed]}>
+          <Ionicons name="add" size={18} color={colors.accentText} />
+          <Text style={s.addLineText}>Ajouter un article</Text>
+        </Pressable>
       </ScrollView>
 
       <View style={[s.footer, { paddingBottom: insets.bottom + 16 }]}>
@@ -202,6 +236,64 @@ export default function Ticket() {
         selectedId={editing != null ? lines[editing]?.category_id ?? null : null}
         onSelect={(id) => editing != null && setReceipt({ ...receipt, lines: setLineCategory(lines, editing, id) })}
         onClose={() => setEditing(null)} />
+
+      <BottomSheet visible={merchantText != null} onClose={() => setMerchantText(null)} title="Commerçant">
+        <View style={{ gap: 12 }}>
+          <TextInput style={s.input} value={merchantText ?? ''} onChangeText={setMerchantText} autoFocus
+            placeholder="Nom du commerçant" placeholderTextColor={colors.textFaint} accessibilityLabel="Nom du commerçant" />
+          <PrimaryButton label="Valider" onPress={() => {
+            setReceipt({ ...receipt, merchant: merchantText?.trim() || null });
+            setMerchantText(null);
+          }} />
+        </View>
+      </BottomSheet>
+
+      <BottomSheet visible={lineEdit != null} onClose={() => setLineEdit(null)}
+        title={lineEdit?.index == null ? 'Ajouter un article' : 'Modifier l’article'}>
+        {lineEdit && (
+          <View style={{ gap: 12 }}>
+            {lineEdit.index != null && lines[lineEdit.index]?.raw_label
+              ? <Text style={s.raw}>Sur le ticket : {lines[lineEdit.index].raw_label.toUpperCase()}</Text> : null}
+            <TextInput style={s.input} value={lineEdit.form.label} onChangeText={(label) => setForm({ label })}
+              autoFocus={lineEdit.index == null} placeholder="Libellé" placeholderTextColor={colors.textFaint}
+              accessibilityLabel="Libellé de l’article" />
+            <View style={s.formRow}>
+              <TextInput style={[s.input, s.qty]} value={lineEdit.form.quantity} onChangeText={(quantity) => setForm({ quantity })}
+                keyboardType="number-pad" selectTextOnFocus accessibilityLabel="Quantité" />
+              <Text style={s.times}>×</Text>
+              <TextInput style={[s.input, { flex: 1 }]} value={lineEdit.form.price} onChangeText={(price) => setForm({ price })}
+                keyboardType="decimal-pad" selectTextOnFocus placeholder="Prix unitaire" placeholderTextColor={colors.textFaint}
+                accessibilityLabel="Prix unitaire en euros" />
+              {/* Le pavé decimal-pad d'Android n'a pas de « − » : remises. */}
+              <Pressable style={s.sign} accessibilityRole="button" accessibilityLabel="Changer le signe (remise)" hitSlop={6}
+                onPress={() => setForm({ price: /^[-−]/.test(lineEdit.form.price) ? lineEdit.form.price.slice(1) : `-${lineEdit.form.price}` })}>
+                <Text style={s.signText}>±</Text>
+              </Pressable>
+            </View>
+            <Text style={s.muted}>
+              {edited ? `Total de la ligne : ${formatEuros(linesTotal(lineEdit.index == null ? edited.slice(-1) : [edited[lineEdit.index]]))}`
+                : 'Quantité entière (1 ou plus) et prix non nul.'}
+            </Text>
+            {lineEdit.index == null && <Text style={s.muted}>Choisis ensuite sa catégorie sur la pastille « À vérifier ».</Text>}
+            <View style={s.formRow}>
+              {lineEdit.index != null && (
+                <View style={{ flex: 1 }}>
+                  <PrimaryButton label="Retirer" variant="secondary" onPress={() => {
+                    setReceipt({ ...receipt, lines: removeLine(lines, lineEdit.index!) });
+                    setLineEdit(null);
+                  }} />
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <PrimaryButton label="Valider" disabled={!edited} onPress={() => {
+                  if (edited) setReceipt({ ...receipt, lines: edited });
+                  setLineEdit(null);
+                }} />
+              </View>
+            </View>
+          </View>
+        )}
+      </BottomSheet>
     </View>
   );
 }
@@ -231,6 +323,23 @@ const s = StyleSheet.create({
   lineQty: { color: colors.textMuted },
   raw: { color: colors.textMuted, fontFamily: font.regular, fontSize: 12, marginTop: 2, letterSpacing: 0.3 },
   amount: { minWidth: 52, textAlign: 'right', color: colors.text, fontFamily: font.semibold, fontSize: 16 },
+
+  pressed: { backgroundColor: colors.surface2 },
+  addLine: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', padding: 10, borderRadius: radius.pill },
+  addLineText: { color: colors.accentText, fontFamily: font.semibold, fontSize: 15 },
+
+  input: {
+    height: 52, paddingHorizontal: 14, borderRadius: radius.key, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface2, color: colors.text, fontFamily: font.regular, fontSize: 17,
+  },
+  formRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  qty: { width: 64, textAlign: 'center' },
+  times: { color: colors.textMuted, fontFamily: font.regular, fontSize: 18 },
+  sign: {
+    width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center',
+  },
+  signText: { color: colors.text, fontFamily: font.semibold, fontSize: 18 },
 
   footer: { paddingTop: 8, gap: 10 },
 });

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   aiSettingsSummary, buildReceiptMessages, parseReceiptCompletion, validateAiSettings,
   canSave, linesTotal, matchesTotal, needsReview, receiptDate, receiptSubtitle, removeLine, setLineCategory, toSaveLines,
+  applyLineForm, lineForm,
   type ReceiptLine,
 } from './receipt.ts';
 
@@ -122,4 +123,28 @@ test('réglages IA : https obligatoire, slash final retiré, champs requis', () 
 test('sous-titre « Service IA »', () => {
   assert.equal(aiSettingsSummary({ baseUrl: 'https://api.openai.com/v1', apiKey: 'k', model: 'gpt-4o' }), 'api.openai.com · gpt-4o');
   assert.equal(aiSettingsSummary(null), 'Non configuré');
+});
+
+test('modifier un article : libellé, quantité, prix (remise négative), catégorie gardée', () => {
+  const lines = [line(), line({ label: 'Riz' })];
+  assert.deepEqual(lineForm(lines[0]), { label: 'Œufs ×30', quantity: '1', price: '4,99' });
+  const out = applyLineForm(lines, 0, { label: ' Œufs bio ', quantity: '2', price: '5,20' })!;
+  assert.deepEqual(out[0], { ...lines[0], label: 'Œufs bio', quantity: 2, unit_price_cents: 520 });
+  assert.equal(out[1], lines[1]);
+  assert.equal(applyLineForm(lines, 1, { label: 'Remise', quantity: '1', price: '-0,50' })![1].unit_price_cents, -50);
+});
+
+test('ajouter un article : sans catégorie, donc « à vérifier » et non enregistrable', () => {
+  const out = applyLineForm([line()], null, { ...lineForm(), label: 'Éponges', price: '1,27' })!;
+  assert.equal(out.length, 2);
+  assert.equal(out[1].category_id, null);
+  assert.equal(needsReview(out[1]), true);
+  assert.equal(canSave(out), false);
+});
+
+test('formulaire illisible : refusé', () => {
+  for (const f of [{ label: 'x', quantity: '0', price: '1' }, { label: 'x', quantity: '1,5', price: '1' },
+    { label: 'x', quantity: '1', price: '' }, { label: 'x', quantity: '1', price: '0' }, { label: 'x', quantity: '1', price: 'abc' }]) {
+    assert.equal(applyLineForm([line()], 0, f), null);
+  }
 });

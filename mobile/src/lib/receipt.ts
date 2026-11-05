@@ -1,6 +1,7 @@
 // Lecture d'un ticket par un service IA compatible OpenAI (requête, réponse, réglages) et logique
 // de l'écran « Vérifier le ticket ». Sans React ni réseau : l'appel lui-même est dans receipts.ts.
 import { isoDate } from './articles.ts';
+import { formatAmount, parseSignedCents } from './budget.ts';
 
 /** Une ligne lue par le modèle de vision (après garde-fous de parseReceiptCompletion). */
 export type ReceiptLine = {
@@ -39,6 +40,26 @@ export const setLineCategory = (lines: ReceiptLine[], index: number, categoryId:
   lines.map((l, i) => (i === index ? { ...l, category_id: categoryId, confident: true } : l));
 
 export const removeLine = (lines: ReceiptLine[], index: number): ReceiptLine[] => lines.filter((_, i) => i !== index);
+
+export type LineForm = { label: string; quantity: string; price: string };
+
+/** Formulaire « Modifier l'article » d'une ligne existante (ou vide pour une nouvelle). */
+export const lineForm = (l?: ReceiptLine): LineForm => (l
+  ? { label: l.label || l.raw_label, quantity: String(l.quantity), price: formatAmount(l.unit_price_cents).replace(/\s/g, '') }
+  : { label: '', quantity: '1', price: '' });
+
+/**
+ * Applique le formulaire à la ligne `index` (null = nouvelle ligne, sans catégorie : « À vérifier »).
+ * null si quantité (entier ≥ 1) ou prix (non nul, négatif possible pour une remise) illisible.
+ */
+export function applyLineForm(lines: ReceiptLine[], index: number | null, f: LineForm): ReceiptLine[] | null {
+  const quantity = /^\d+$/.test(f.quantity.trim()) ? Number(f.quantity.trim()) : 0;
+  const price = parseSignedCents(f.price);
+  if (quantity < 1 || !price) return null;
+  const patch = { label: f.label.trim(), quantity, unit_price_cents: price };
+  if (index == null) return [...lines, { raw_label: '', category_id: null, confident: true, ...patch }];
+  return lines.map((l, i) => (i === index ? { ...l, ...patch } : l));
+}
 
 /** Lignes au format de saveEntry. Lève une erreur si une ligne n'a pas de catégorie. */
 export function toSaveLines(lines: ReceiptLine[]) {
