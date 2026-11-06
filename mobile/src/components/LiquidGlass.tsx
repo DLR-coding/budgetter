@@ -126,16 +126,8 @@ float3 interfaceColor(float2 point, float2 normal) {
   return mix(float3(0.92, 0.93, 0.96), float3(0.014, 0.013, 0.018), darkLine);
 }
 
-half4 main(float2 point) {
-  // La dernière surface qui couvre le point l'emporte (lentille par-dessus la barre).
-  int chosen = -1;
-  float chosenD = 1e6;
-  for (int i = 0; i < 3; i++) {
-    float d = shapeSdf(i, point);
-    if (d <= 2.1 && (chosen < 0 || i != 0)) { chosen = i; chosenD = d; }
-  }
-  if (chosen < 0) return half4(0.0);
-
+// Couleur prémultipliée d'une surface (chosen) au point, à la distance chosenD de son bord.
+half4 shade(int chosen, float2 point, float chosenD) {
   float pressure = chosen == 1 ? clamp(lensPress, 0.0, 1.0) : 0.0;
   float refraction = mix(REFRACTION_REST, REFRACTION_HELD, pressure);
   float dispersion = mix(DISPERSION_REST, 0.0, pressure);
@@ -228,6 +220,22 @@ half4 main(float2 point) {
   color = clamp(color, 0.0, 1.0);
   float alpha = hairAlpha + mask * (1.0 - hairAlpha);
   return half4(hairColor * hairAlpha + color * mask * (1.0 - hairAlpha), alpha);
+}
+
+half4 main(float2 point) {
+  float dFab = shapeSdf(2, point);
+  if (dFab <= 2.1) return shade(2, point, dFab);
+  // Lentille composée par-dessus la barre : sur son bord adouci, la barre transparaît
+  // (et non le fond posé sous le canevas, qui faisait un liseré).
+  half4 c = half4(0.0);
+  float dLens = shapeSdf(1, point);
+  if (dLens <= 2.1) {
+    c = shade(1, point, dLens);
+    if (c.a >= 0.999) return c;
+  }
+  float dBar = shapeSdf(0, point);
+  if (dBar <= 2.1) c += shade(0, point, dBar) * (1.0 - c.a);
+  return c;
 }
 `;
 
