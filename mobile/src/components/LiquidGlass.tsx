@@ -1,4 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { makeMutable } from 'react-native-reanimated';
 import { Skia } from 'react-native-skia';
+import { DEFAULT_GLASS, type GlassSettings, parseGlass } from '../lib/glass-settings';
 
 // Verre liquide : transposition en SkSL du modèle optique « V2 » de
 // webgl-apple-liquid-glass (Oliver Nemo, licence MIT,
@@ -27,25 +30,24 @@ uniform float4 lensTint;
 uniform float4 fabTint;
 uniform float lensPress;  // 0 au repos, 1 lentille tenue (appui sur un onglet)
 
-// Matériau V2 par défaut (DEFAULT_MATERIAL_V2) ; la lentille tenue passe au matériau
-// PRESSED_CONTROL_MATERIAL_V2 (réfraction 17, sans dispersion).
-const float REFRACTION_REST = 84.0;
-const float REFRACTION_HELD = 17.0;
-const float DISPERSION_REST = 2.0;
-const float EDGE_REACH = 0.14;
-const float EDGE_WIDTH = 0.21;
-// Écrasement de la lentille tenue (PRESS_SQUASH < 1 pour ne pas replier l'image) et poids
-// par axe (DEFAULT_NAVIGATION_LENS : innerLength 0, innerHeight 0.24).
-const float PRESS_SQUASH = 0.85;
-const float2 PRESS_AXES = float2(1.0, 0.76);
-const float BODY = 0.72;
-const float ABSORPTION = 0.58;
-const float RIM = 0.24;
-const float REFLECTION = 0.31;
-const float HIGHLIGHT = 0.34;
-const float ECHO = 0.28;
-const float HAIRLINE = 0.92;
-const float HAIR_WIDTH = 0.52;
+// Matériau V2 (DEFAULT_MATERIAL_V2 par défaut), réglable dans l'écran « Verre liquide »
+// (src/lib/glass-settings.ts). La bulle tenue a sa propre réfraction (référence : 17) et pas de
+// dispersion ; mSquash < 1 pour ne pas replier l'image, mSquashAxes = 1 - retenue par axe.
+uniform float mRefraction;
+uniform float mRefractionHeld;
+uniform float mDispersion;
+uniform float mEdgeReach;
+uniform float mEdgeWidth;
+uniform float mSquash;
+uniform float2 mSquashAxes;
+uniform float mBody;
+uniform float mAbsorption;
+uniform float mRim;
+uniform float mReflection;
+uniform float mHighlight;
+uniform float mEcho;
+uniform float mHairline;
+uniform float mHairWidth;
 
 float sdRoundBox(float2 p, float2 b, float r) {
   float2 q = abs(p) - b + r;
@@ -130,8 +132,8 @@ float3 interfaceColor(float2 point, float2 normal) {
 // Couleur prémultipliée d'une surface (chosen) au point, à la distance chosenD de son bord.
 half4 shade(int chosen, float2 point, float chosenD) {
   float pressure = chosen == 1 ? clamp(lensPress, 0.0, 1.0) : 0.0;
-  float refraction = mix(REFRACTION_REST, REFRACTION_HELD, pressure);
-  float dispersion = mix(DISPERSION_REST, 0.0, pressure);
+  float refraction = mix(mRefraction, mRefractionHeld, pressure);
+  float dispersion = mix(mDispersion, 0.0, pressure);
   float2 center = shapeCenter(chosen);
   float2 halfSize = shapeHalf(chosen);
   float minHalf = min(halfSize.x, halfSize.y);
@@ -145,7 +147,7 @@ half4 shade(int chosen, float2 point, float chosenD) {
   float2 local = (point - center) / max(halfSize, float2(1.0));
 
   float edgeDepth = max(-chosenD, 0.0);
-  float causticSupport = max(8.0, minHalf * EDGE_WIDTH);
+  float causticSupport = max(8.0, minHalf * mEdgeWidth);
   float captureX = clamp(edgeDepth / causticSupport, 0.0, 1.0);
   float causticT = 1.0 - smoothstep(0.0, causticSupport, edgeDepth);
   float causticShade = causticT * causticT * (3.0 - 2.0 * causticT);
@@ -153,14 +155,14 @@ half4 shade(int chosen, float2 point, float chosenD) {
   float refractionProfile = pow(1.0 - clamp(edgeDepth / refractionSupport, 0.0, 1.0), 2.2);
   float opticalNormalMix = smoothstep(0.12, 0.55, captureX);
   float2 bendNormal = normalize(mix(normal, opticalNormal(chosen, point, normal), opticalNormalMix));
-  float captureDistance = EDGE_REACH * minHalf * 2.0 * 1.24 * captureProfile;
+  float captureDistance = mEdgeReach * minHalf * 2.0 * 1.24 * captureProfile;
   float2 lensShift = -bendNormal * (refraction * refractionProfile * 0.32 + captureDistance);
   lensShift += -local * (refraction * 0.035) * smoothstep(0.16, 0.92, depth);
   // Lentille tenue : surface enfoncée qui écrase ce qu'on voit au travers ; le déplacement
   // suit la normale du contour, nul sur l'axe central et au bord.
   float pressDepth = clamp(edgeDepth / max(minHalf, 1.0), 0.0, 1.0);
   lensShift *= 1.0 - pressure * 0.35;
-  lensShift += normal * PRESS_AXES * (PRESS_SQUASH * minHalf * pressure * pressDepth * (1.0 - pressDepth));
+  lensShift += normal * mSquashAxes * (mSquash * minHalf * pressure * pressDepth * (1.0 - pressDepth));
   float2 chromaShift = bendNormal * dispersion * (0.32 + edgeCurve * 0.95);
   float2 pR = point + lensShift * (1.0 + dispersion * 0.009) + chromaShift;
   float2 pG = point + lensShift;
@@ -183,10 +185,10 @@ half4 shade(int chosen, float2 point, float chosenD) {
 
   float3 bodyTarget = mix(float3(0.030, 0.031, 0.038), float3(0.94, 0.95, 0.97),
                           smoothstep(0.58, 0.82, luminance(transmitted)));
-  transmitted = mix(transmitted, bodyTarget, clamp(BODY * (0.034 + edgeCurve * 0.012), 0.0, 0.11));
-  transmitted = mix(float3(luminance(transmitted)), transmitted, 1.0 - BODY * 0.045);
+  transmitted = mix(transmitted, bodyTarget, clamp(mBody * (0.034 + edgeCurve * 0.012), 0.0, 0.11));
+  transmitted = mix(float3(luminance(transmitted)), transmitted, 1.0 - mBody * 0.045);
   float opticalPath = 0.26 + sqrt(depth) * 0.74;
-  transmitted *= exp(-float3(0.018, 0.011, 0.004) * opticalPath * 2.4 * ABSORPTION);
+  transmitted *= exp(-float3(0.018, 0.011, 0.004) * opticalPath * 2.4 * mAbsorption);
   float4 tint = shapeTint(chosen);
   transmitted = mix(transmitted, tint.rgb, tint.a * (0.88 + depth * 0.12));
 
@@ -197,7 +199,7 @@ half4 shade(int chosen, float2 point, float chosenD) {
   float key = pow(max(dot(normal, lightDir), 0.0), 7.0) * fresnel;
   float opposite = pow(max(dot(normal, -lightDir), 0.0), 5.0) * innerRim;
   float3 color = transmitted;
-  float rimMix = clamp((thinRim * 0.42 + innerRim * 0.18 + fresnel * 0.10) * RIM * REFLECTION, 0.0, 0.72);
+  float rimMix = clamp((thinRim * 0.42 + innerRim * 0.18 + fresnel * 0.10) * mRim * mReflection, 0.0, 0.72);
   if (rimMix > 0.0005) {
     float3 reflected = softBackdrop(point + normal * (8.0 + refraction * 0.17), 5.2);
     float3 adaptiveRim = reflected * 1.45 + float3(0.06, 0.035, 0.08);
@@ -205,21 +207,21 @@ half4 shade(int chosen, float2 point, float chosenD) {
     adaptiveRim = mix(adaptiveRim, float3(0.035, 0.025, 0.045), smoothstep(0.78, 0.98, luminance(reflected)) * 0.48);
     color = mix(color, adaptiveRim, rimMix);
   }
-  color += float3(1.0, 0.82, 0.92) * key * 0.30 * RIM * HIGHLIGHT;
-  color *= 1.0 - opposite * 0.12 * RIM;
-  float echoMix = exp(-pow((chosenD + 11.0) / 5.5, 2.0)) * 0.075 * RIM * ECHO;
+  color += float3(1.0, 0.82, 0.92) * key * 0.30 * mRim * mHighlight;
+  color *= 1.0 - opposite * 0.12 * mRim;
+  float echoMix = exp(-pow((chosenD + 11.0) / 5.5, 2.0)) * 0.075 * mRim * mEcho;
   if (echoMix > 0.0005) color = mix(color, sharp(point - normal * 11.0) * 1.12, echoMix);
 
   // Liseré : clair sur fond sombre, sombre sur fond clair, blanc côté lumière.
-  float lineWidth = mix(0.34, 1.08, HAIR_WIDTH) / pd * 1.5;
+  float lineWidth = mix(0.34, 1.08, mHairWidth) / pd * 1.5;
   float edgeAA = 1.0 / pd;
   float strokeDistance = abs(chosenD + 0.10) - lineWidth * 0.5;
   float hairline = 1.0 - smoothstep(-edgeAA * 0.72, edgeAA * 0.72, strokeDistance);
-  float hairAlpha = clamp(hairline * HAIRLINE * (0.22 + RIM * 0.20), 0.0, 1.0);
+  float hairAlpha = clamp(hairline * mHairline * (0.22 + mRim * 0.20), 0.0, 1.0);
   float3 hairColor = float3(0.0);
   if (hairAlpha > 0.0) {
     hairColor = interfaceColor(point, normal);
-    hairColor = mix(hairColor, float3(0.985, 0.99, 1.0), clamp(key * HIGHLIGHT * 2.5 * (0.65 + RIM * 0.60), 0.0, 0.96));
+    hairColor = mix(hairColor, float3(0.985, 0.99, 1.0), clamp(key * mHighlight * 2.5 * (0.65 + mRim * 0.60), 0.0, 0.96));
   }
   color = clamp(color, 0.0, 1.0);
   float alpha = hairAlpha + mask * (1.0 - hairAlpha);
@@ -247,9 +249,52 @@ const effect = Skia.RuntimeEffect.Make(GLASS_SKSL);
 if (!effect) throw new Error('Shader verre liquide invalide');
 export const GLASS = effect;
 
-// Lumière venant d'en haut à gauche (lightAngle 136° du matériau V2, axe y vers le bas).
-const LIGHT_ANGLE = (136 * Math.PI) / 180;
-export const LIGHT_DIR = [Math.cos(LIGHT_ANGLE), -Math.sin(LIGHT_ANGLE)];
+// Réglages du verre, partagés avec le thread UI : la navbar les lit à chaque image, l'écran
+// « Verre liquide » les modifie en direct. Sauvegardés (avec un délai) dans AsyncStorage.
+export const glassSettings = makeMutable<GlassSettings>(DEFAULT_GLASS);
+const STORAGE_KEY = 'glass-settings';
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+export async function loadGlassSettings() {
+  try {
+    glassSettings.value = parseGlass(await AsyncStorage.getItem(STORAGE_KEY));
+  } catch (e) {
+    console.warn('Réglages du verre illisibles, valeurs par défaut', e);
+  }
+}
+
+export function setGlassSettings(next: GlassSettings) {
+  glassSettings.value = next;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch((e) => console.warn('Réglages du verre non enregistrés', e));
+  }, 400);
+}
+
+// Uniformes du matériau (worklet : appelé par la navbar sur le thread UI). La lumière vient de
+// lightAngle (136° = en haut à gauche, axe y vers le bas).
+export function materialUniforms(s: GlassSettings) {
+  'worklet';
+  const a = (s.lightAngle * Math.PI) / 180;
+  return {
+    mRefraction: s.refraction,
+    mRefractionHeld: s.refractionHeld,
+    mDispersion: s.dispersion,
+    mEdgeReach: s.edgeReach,
+    mEdgeWidth: s.edgeWidth,
+    mSquash: s.squash,
+    mSquashAxes: [1 - s.squashLength, 1 - s.squashHeight],
+    mBody: s.body,
+    mAbsorption: s.absorption,
+    mRim: s.rim,
+    mReflection: s.reflection,
+    mHighlight: s.highlight,
+    mEcho: s.echo,
+    mHairline: s.hairline,
+    mHairWidth: s.hairWidth,
+    lightDir: [Math.cos(a), -Math.sin(a)],
+  };
+}
 
 // Teinte d'une surface pour le shader : couleur (#RRGGBB) et opacité de teinte.
 export function tintUniform(hex: string, amount: number) {

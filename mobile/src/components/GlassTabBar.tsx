@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { haptics } from '../lib/haptics';
 import { colors, font, glass } from '../theme';
 import { type Strip, useGlassScene, useLiveBackdrop } from './GlassBackdrop';
-import { GLASS, LIGHT_DIR, tintUniform } from './LiquidGlass';
+import { GLASS, glassSettings, loadGlassSettings, materialUniforms, tintUniform } from './LiquidGlass';
 
 const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   index: 'home-outline',
@@ -26,28 +26,23 @@ const THUMB_H = BAR_H * 0.84;
 const FAB_GAP = 10;
 const MARGIN = 16; // bande capturée au-dessus et au-dessous de la barre (reflets, débordement)
 const PD = PixelRatio.get();
-const BAR_TINT = tintUniform(colors.bg, glass.barTint);
-const LENS_TINT = tintUniform(colors.text, glass.lensTint);
-const FAB_TINT = tintUniform(colors.accent, glass.fabTint);
+// Couleurs des voiles ; leur opacité vient des réglages du verre (écran « Verre liquide »).
+const BAR_TINT = tintUniform(colors.bg, 0);
+const LENS_TINT = tintUniform(colors.text, 0);
+const FAB_TINT = tintUniform(colors.accent, 0);
 
 // Appui (press-effects.js, DEFAULT_NAVIGATION_LENS) : la bulle tenue perd son voile, devient
 // plus large et plus haute que la barre (elle en déborde), et écrase ce qu'on voit au travers.
+// Sa taille (heldHeight, heldRatio : nos onglets étroits la rendraient sinon ronde) et les
+// ressorts de position viennent des réglages du verre (src/lib/glass-settings.ts).
 const PRESS_IN = { stiffness: 520, damping: 28 };
 const PRESS_OUT = { stiffness: 540, damping: 31 };
 const LENS_GROW_X = 0.13;
-const LENS_HELD_H = 1.125; // référence : 1,24 ; un peu moins haute pour rester une capsule
-// Nos onglets sont étroits : sans ce minimum, la bulle tenue serait ronde au lieu de suivre la
-// forme de la barre. 1,35 (environ 97 × 72 dp) : centrée sur « Mois » ou « Réglages », elle ne
-// dépasse la barre que d'environ 4 dp (le « + » est à 10 dp, le bord de l'écran à 20 dp).
-const LENS_HELD_RATIO = 1.35;
 // Position le long de la barre (0 = premier onglet, 1 = dernier). Ressorts un peu sous-amortis :
 // la bulle dépasse légèrement puis revient (rebond). La traîne, plus souple, étire la goutte en
 // route puis la recolle. Au-delà du premier ou du dernier onglet, le dépassement est amorti
-// comme un élastique et plafonné à EDGE_GIVE.
+// comme un élastique et plafonné à edgeGive.
 const FOLLOW = { stiffness: 520, damping: 34 };
-const SNAP = { stiffness: 320, damping: 22 };
-const LAG = { stiffness: 200, damping: 20 };
-const EDGE_GIVE = 6; // dp
 const FAB_GROW = 0.075;    // bouton : gonfle de 7,5 %
 const FAB_BLOOM = 0.35;    // … et sa teinte s'éclaircit vers le blanc
 
@@ -64,6 +59,7 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   const [placement, setPlacement] = useState<Placement | null>(null);
   const { scene, version } = useGlassScene(state.routes[state.index].key);
   const { image, ready } = useLiveBackdrop(scene, placement?.strip ?? null);
+  useEffect(() => { loadGlassSettings(); }, []);
 
   // Position de la barre dans la scène affichée, pour savoir quelle bande capturer.
   const measure = useCallback(() => {
@@ -79,7 +75,12 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   }, [scene]);
   useEffect(() => { requestAnimationFrame(measure); }, [measure, width, version]);
 
-  const n = state.routes.length;
+  // Onglets affichés : les routes cachées (écran « Verre liquide ») n'ont pas de place dans la
+  // barre ; sur elles, la bulle reste sous « Réglages », d'où on les ouvre.
+  const focused = state.routes[state.index];
+  const visible = state.routes.filter((r) => r.name in LABELS);
+  const active = Math.max(0, visible.findIndex((r) => r.name === (focused.name in LABELS ? focused.name : 'reglages')));
+  const n = visible.length;
   const last = Math.max(1, n - 1);
   const barW = width - FAB_GAP - BAR_H;
   const thumbW = (barW - 2 * INSET) / n;
@@ -87,22 +88,23 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   const tabX = (i: number) => left + INSET + thumbW * (i + 0.5); // centre d'un onglet, dans le canevas
 
   // progress : position de la bulle entre le premier (0) et le dernier onglet (1).
-  const progress = useSharedValue(state.index / last);
-  const lag = useSharedValue(state.index / last); // traîne de la goutte
+  const progress = useSharedValue(active / last);
+  const lag = useSharedValue(active / last); // traîne de la goutte
   const press = useSharedValue(0);   // gonflement de la bulle tenue
   const fabPress = useSharedValue(0);
   const moveTo = (t: number, held: boolean) => {
-    progress.value = withSpring(t, held ? FOLLOW : SNAP);
-    lag.value = withSpring(t, LAG);
+    const g = glassSettings.value;
+    progress.value = withSpring(t, held ? FOLLOW : { stiffness: g.snapStiffness, damping: g.snapDamping });
+    lag.value = withSpring(t, { stiffness: g.lagStiffness, damping: g.lagDamping });
   };
-  useEffect(() => { moveTo(state.index / last, false); }, [state.index, last]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { moveTo(active / last, false); }, [active, last]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pressIn = (v: SharedValue<number>) => { v.value = withSpring(1, PRESS_IN); };
   const pressOut = (v: SharedValue<number>) => { v.value = withSpring(0, PRESS_OUT); };
   const navigate = (i: number) => {
-    if (i === state.index) return;
+    if (visible[i].key === focused.key) return;
     haptics.tap();
-    navigateToTab(state.routes[i].key);
+    navigateToTab(visible[i].key);
   };
   const fingerProgress = (pageX: number) =>
     Math.min(1, Math.max(0, (pageX - (placement?.winX ?? 0) + left - tabX(0)) / (tabX(last) - tabX(0) || 1)));
@@ -124,22 +126,23 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
       release(i);
       navigate(i);
     },
-    onPanResponderTerminate: () => release(state.index),
+    onPanResponderTerminate: () => release(active),
   });
 
   const cy = MARGIN + BAR_H / 2;
-  const heldHalfH = (BAR_H * LENS_HELD_H) / 2;
-  const heldHalfW = Math.max((thumbW / 2) * (1 + LENS_GROW_X), heldHalfH * LENS_HELD_RATIO);
   // Nombres calculés ici : le worklet ci-dessous tourne sur le thread UI et ne peut pas appeler tabX.
   const firstX = tabX(0);
   const lastX = tabX(last);
   const span = lastX - firstX || 1;
-  const give = EDGE_GIVE / span;
   const uniforms = useDerivedValue(() => {
+    const g = glassSettings.value;
+    const heldHalfH = (BAR_H * g.heldHeight) / 2;
+    const heldHalfW = Math.max((thumbW / 2) * (1 + LENS_GROW_X), heldHalfH * g.heldRatio);
+    const give = Math.max(0.0001, g.edgeGive / span);
     // Borné à [0, 1] : le ressort qui dépasse ne doit ni gonfler ni rétrécir la bulle.
     const p = Math.min(1, Math.max(0, press.value));
     const fp = Math.min(1, Math.max(0, fabPress.value));
-    // Dépassement élastique aux bouts : quasi libre au début, plafonné à EDGE_GIVE (le ressort
+    // Dépassement élastique aux bouts : quasi libre au début, plafonné à edgeGive (le ressort
     // relâché en plein glissement repart avec la vitesse du doigt et sortirait de la barre).
     const soft = (v: number) => (v < 0 ? (-give * -v) / (give - v) : v > 1 ? 1 + (give * (v - 1)) / (give + v - 1) : v);
     // Bulle centrée sur sa position, même tenue (elle peut alors déborder un peu de la barre).
@@ -154,14 +157,14 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
       lensH: [thumbW / 2 + (heldHalfW - thumbW / 2) * p, THUMB_H / 2 + (heldHalfH - THUMB_H / 2) * p],
       fabC: [left + barW + FAB_GAP + BAR_H / 2, cy],
       fabR: (BAR_H / 2) * (1 + FAB_GROW * fp),
-      lightDir: LIGHT_DIR,
-      barTint: BAR_TINT,
-      lensTint: [LENS_TINT[0], LENS_TINT[1], LENS_TINT[2], LENS_TINT[3] * (1 - p)],
+      ...materialUniforms(g),
+      barTint: [BAR_TINT[0], BAR_TINT[1], BAR_TINT[2], g.barTint],
+      lensTint: [LENS_TINT[0], LENS_TINT[1], LENS_TINT[2], g.lensTint * (1 - p)],
       fabTint: [
         FAB_TINT[0] + (1 - FAB_TINT[0]) * FAB_BLOOM * fp,
         FAB_TINT[1] + (1 - FAB_TINT[1]) * FAB_BLOOM * fp,
         FAB_TINT[2] + (1 - FAB_TINT[2]) * FAB_BLOOM * fp,
-        FAB_TINT[3],
+        g.fabTint,
       ],
       lensPress: p,
     };
@@ -193,19 +196,19 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
       <View style={[StyleSheet.absoluteFill, styles.row]} pointerEvents="box-none">
         {/* Le toucher passe par le geste de la barre ; chaque onglet reste accessible au lecteur d'écran. */}
         <View style={styles.tabs} {...pan.panHandlers}>
-          {state.routes.map((route, i) => (
+          {visible.map((route, i) => (
             <View
               key={route.key}
               accessible
               accessibilityRole="tab"
               accessibilityLabel={LABELS[route.name] ?? route.name}
-              accessibilityState={{ selected: state.index === i }}
+              accessibilityState={{ selected: active === i }}
               accessibilityActions={[{ name: 'activate' }]}
               onAccessibilityAction={() => navigate(i)}
               style={styles.tab}
             >
-              <Ionicons name={ICONS[route.name] ?? 'ellipse-outline'} size={20} color={state.index === i ? glass.activeInk : colors.textMuted} />
-              <Text style={[styles.label, { color: state.index === i ? glass.activeInk : colors.textMuted }]}>{LABELS[route.name] ?? route.name}</Text>
+              <Ionicons name={ICONS[route.name] ?? 'ellipse-outline'} size={20} color={active === i ? glass.activeInk : colors.textMuted} />
+              <Text style={[styles.label, { color: active === i ? glass.activeInk : colors.textMuted }]}>{LABELS[route.name] ?? route.name}</Text>
             </View>
           ))}
         </View>

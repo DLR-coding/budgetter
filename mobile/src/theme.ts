@@ -26,13 +26,10 @@ export const colors = {
   warnBg: '#2E2216',
 };
 
-// Verre liquide (src/components/LiquidGlass.tsx). Teintes : opacité de la couleur posée
-// sur ce que le verre transmet (0 = verre clair).
+// Verre liquide (src/components/LiquidGlass.tsx) ; le matériau et les voiles se règlent dans
+// l'écran « Verre liquide » (src/lib/glass-settings.ts).
 export const glass = {
   fill: 'rgba(32,44,62,0.92)', // repli de la barre tant que le verre n'est pas affiché
-  barTint: 0.35,               // barre : voile de colors.bg, pour la lisibilité des onglets
-  lensTint: 0.16,              // bulle de l'onglet actif au repos : voile clair (colors.text)
-  fabTint: 0.75,               // bouton « + » : verre teinté colors.accent
   activeInk: '#FFFFFF',        // icône et libellé de l'onglet actif
 };
 

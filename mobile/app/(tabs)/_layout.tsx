@@ -15,6 +15,10 @@ export default function TabsLayout() {
         <Tabs.Screen name="index" />
         <Tabs.Screen name="saisies" />
         <Tabs.Screen name="reglages" />
+        {/* Ouvert depuis Réglages. Onglet pour garder la barre visible pendant les réglages, mais sans
+            bouton : GlassTabBar n'affiche que les onglets qui ont un libellé (href: null retirerait
+            la route du navigateur). */}
+        <Tabs.Screen name="verre" />
       </Tabs>
     </GlassScenes>
   );

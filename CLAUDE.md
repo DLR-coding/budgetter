@@ -13,7 +13,9 @@ Toute l'interface est en français.
   `react-native-skia`, plus `@shopify/react-native-skia`), shader dans `src/components/LiquidGlass.tsx`
   (modèle V2 de webgl-apple-liquid-glass, MIT). Skia ne voit pas les vues natives : chaque onglet est
   une vue capturable (`GlassScene`) et la barre recapture en direct la bande d’écran derrière elle avec
-  `react-native-webgpu` (`src/components/GlassBackdrop.tsx`).
+  `react-native-webgpu` (`src/components/GlassBackdrop.tsx`). Réglages du verre (matériau, bulle,
+  ressorts) : `src/lib/glass-settings.ts`, écran « Verre liquide » `app/(tabs)/verre.tsx` (onglet
+  sans bouton, ouvert depuis Réglages), appliqués en direct et sauvegardés dans AsyncStorage.
 - **Supabase** (Postgres + Auth + Storage). Schéma : `supabase/migrations/`.
   Toute modification de schéma = nouvelle migration numérotée, jamais d'édition de `0001`.
 - **Lecture de tickets** : appel direct du téléphone à un service IA compatible OpenAI (URL `…/v1`, clé, modèle)
