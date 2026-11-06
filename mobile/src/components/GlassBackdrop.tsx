@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ComponentRef, type ReactNode, type RefObject } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode, type RefObject } from 'react';
 import { PixelRatio, View } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 import { Skia, type SkImage } from 'react-native-skia';
@@ -10,28 +10,51 @@ import { colors } from '../theme';
 // (react-native-webgpu, drawElementImageToTexture ; sur GPU sans copie dès Android 13).
 
 type ViewRef = ComponentRef<typeof View>;
-type Scenes = Map<string, RefObject<ViewRef | null>>;
-const ScenesContext = createContext<Scenes>(new Map());
+type SceneRef = RefObject<ViewRef | null>;
+type Scenes = {
+  scenes: ReadonlyMap<string, SceneRef>;
+  register: (key: string, ref: SceneRef) => void;
+  unregister: (key: string) => void;
+};
+const ScenesContext = createContext<Scenes>({ scenes: new Map(), register: () => {}, unregister: () => {} });
 
+// Registre réactif des onglets : une inscription redessine la barre, qui peut alors mesurer et
+// capturer (avec une simple Map, la barre ne voyait l'onglet qu'après une interaction).
 export function GlassScenes({ children }: { children: ReactNode }) {
-  const scenes = useRef<Scenes>(new Map()).current;
-  return <ScenesContext.Provider value={scenes}>{children}</ScenesContext.Provider>;
+  const [scenes, setScenes] = useState<ReadonlyMap<string, SceneRef>>(new Map());
+  const register = useCallback((key: string, ref: SceneRef) => setScenes((prev) => new Map(prev).set(key, ref)), []);
+  const unregister = useCallback((key: string) => setScenes((prev) => {
+    const next = new Map(prev);
+    next.delete(key);
+    return next;
+  }), []);
+  const value = useMemo(() => ({ scenes, register, unregister }), [scenes, register, unregister]);
+  return <ScenesContext.Provider value={value}>{children}</ScenesContext.Provider>;
 }
 
 // Enveloppe d'un onglet (screenLayout) : la vue que la barre capture, sans la barre elle-même.
+// Inscrite à chaque mise en page : la barre la reçoit déjà dimensionnée, et remesure si elle change.
 export function GlassScene({ routeKey, children }: { routeKey: string; children: ReactNode }) {
-  const scenes = useContext(ScenesContext);
+  const { register, unregister } = useContext(ScenesContext);
   const ref = useRef<ViewRef>(null);
-  useEffect(() => {
-    scenes.set(routeKey, ref);
-    return () => { scenes.delete(routeKey); };
-  }, [scenes, routeKey]);
+  useEffect(() => () => unregister(routeKey), [unregister, routeKey]);
   // Fond opaque : la capture ne doit pas avoir de trous transparents (noir sous le verre).
-  return <View ref={ref} collapsable={false} style={{ flex: 1, backgroundColor: colors.bg }}>{children}</View>;
+  return (
+    <View
+      ref={ref}
+      collapsable={false}
+      onLayout={() => register(routeKey, ref)}
+      style={{ flex: 1, backgroundColor: colors.bg }}
+    >
+      {children}
+    </View>
+  );
 }
 
+// Vue de l'onglet et version du registre (change à chaque inscription, pour remesurer).
 export function useGlassScene(routeKey: string) {
-  return useContext(ScenesContext).get(routeKey);
+  const { scenes } = useContext(ScenesContext);
+  return { scene: scenes.get(routeKey), version: scenes };
 }
 
 export type Strip = { x: number; y: number; width: number; height: number };

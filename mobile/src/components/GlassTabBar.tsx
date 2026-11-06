@@ -47,7 +47,7 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   const wrap = useRef<ComponentRef<typeof View>>(null);
   const [width, setWidth] = useState(0);
   const [placement, setPlacement] = useState<Placement | null>(null);
-  const scene = useGlassScene(state.routes[state.index].key);
+  const { scene, version } = useGlassScene(state.routes[state.index].key);
   const { image, ready } = useLiveBackdrop(scene, placement?.strip ?? null);
   const iconFont = useFont(require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'), 20);
   const labelFont = useFont(require('@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf'), 11);
@@ -64,7 +64,7 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
       });
     });
   }, [scene]);
-  useEffect(() => { requestAnimationFrame(measure); }, [measure, width]);
+  useEffect(() => { requestAnimationFrame(measure); }, [measure, width, version]);
 
   const barW = width - FAB_GAP - BAR_H;
   const n = state.routes.length;
@@ -129,9 +129,10 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
       pointerEvents="box-none"
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
     >
-      {/* Repli tant qu'aucune capture n'est prête (premier rendu, GPU indisponible). */}
-      <View style={[styles.bar, !ready && styles.fallback]} />
-      <View style={[styles.fab, !ready && styles.fabFallback]} />
+      {/* Repli toujours présent sous le verre (opaque dans ses formes) : visible tant que le canevas
+          n'a pas affiché sa première image, ou si le GPU est indisponible. */}
+      <View style={[styles.bar, styles.fallback]} />
+      <View style={[styles.fab, styles.fabFallback]} />
       {placement && width > 0 && (
         <Canvas
           pointerEvents="none"
@@ -204,8 +205,9 @@ const styles = StyleSheet.create({
   wrap: { position: 'absolute', left: 20, right: 20, height: BAR_H, flexDirection: 'row', gap: FAB_GAP },
   bar: { flex: 1, borderRadius: BAR_H / 2 },
   fab: { width: BAR_H, borderRadius: BAR_H / 2 },
-  fallback: { backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.borderStrong },
-  fabFallback: { backgroundColor: colors.accent },
+  // Rentré d'1 dp : caché sous le bord adouci du verre (sinon liseré bleuté autour).
+  fallback: { backgroundColor: glass.fill, margin: 1 },
+  fabFallback: { backgroundColor: colors.accent, margin: 1 },
   row: { flexDirection: 'row', gap: FAB_GAP },
   tabs: { flex: 1, flexDirection: 'row', padding: PAD, gap: GAP },
   tab: { flex: 1 },
