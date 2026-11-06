@@ -1,15 +1,15 @@
-import { Canvas, Fill, Group, ImageShader, Shader, type SkFont, Text as SkText, useFont } from 'react-native-skia';
+import { Canvas, Fill, ImageShader, Shader } from 'react-native-skia';
 import { router } from 'expo-router';
 import { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react';
-import { PanResponder, PixelRatio, Pressable, StyleSheet, View } from 'react-native';
-import { type SharedValue, useDerivedValue, useSharedValue, withSpring } from 'react-native-reanimated';
+import { PanResponder, PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Easing, type SharedValue, useDerivedValue, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { haptics } from '../lib/haptics';
-import { colors, glass } from '../theme';
+import { colors, font, glass } from '../theme';
 import { type Strip, useGlassScene, useLiveBackdrop } from './GlassBackdrop';
-import { GLASS, LIGHT_DIR, tintUniform } from './LiquidGlass';
+import { GLASS, LIGHT_DIR, tintOpacity, tintUniform } from './LiquidGlass';
 
 const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   index: 'home-outline',
@@ -18,30 +18,33 @@ const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 const LABELS: Record<string, string> = { index: 'Mois', saisies: 'Saisies', reglages: 'Réglages' };
 
+// Géométrie de la navbar « Press » de la référence (playground/scenes.js, pressEffects) :
+// pouce en retrait de 8 % de la hauteur de la barre, haut de 84 %.
 const BAR_H = 64;
-const PAD = 6;
-const GAP = 4;
+const INSET = BAR_H * 0.08;
+const THUMB_H = BAR_H * 0.84;
 const FAB_GAP = 10;
-const LENS_H = BAR_H - 2 * PAD;
-const MARGIN = 16; // bande capturée au-dessus et au-dessous de la barre (reflets du bord)
+const MARGIN = 16; // bande capturée au-dessus et au-dessous de la barre (reflets, débordement)
 const PD = PixelRatio.get();
-const BAR_TINT = tintUniform(colors.bg, glass.barTint);
-const LENS_TINT = tintUniform(colors.text, glass.lensTint);
+const BAR_TINT = tintUniform(glass.barTone, tintOpacity(glass.barTint));
+const CLEAR = [0, 0, 0, 0]; // pouce tenu : verre clair, sans teinte
 const FAB_TINT = tintUniform(colors.accent, glass.fabTint);
-// Appui, d'après la référence (press-effects.js, DEFAULT_NAVIGATION_LENS) : arrivée ferme,
-// relâchement un peu plus souple.
+
+// Appui (press-effects.js, DEFAULT_NAVIGATION_LENS) : le pouce tenu devient une lentille de
+// verre liquide 13 % plus large et 1,24 fois plus haute que la barre ; au relâchement elle
+// s'efface en 140 ms (linéaire) pendant que le pouce dépoli revient.
 const PRESS_IN = { stiffness: 520, damping: 28 };
 const PRESS_OUT = { stiffness: 540, damping: 31 };
-const LENS_GROW_X = 0.13;  // lentille tenue : 13 % plus large
-const LENS_HELD_H = 1.24;  // … et 1,24 fois la hauteur de la barre (elle en dépasse)
-// … en restant une capsule allongée comme dans la référence (nos onglets étroits la
-// rendaient ronde) : largeur au moins 1,6 fois la hauteur.
+const RELEASE_FADE = { duration: 140, easing: Easing.linear };
+const LENS_GROW_X = 0.13;
+const LENS_HELD_H = 1.24;
+// Nos onglets sont étroits : sans ce minimum, la lentille tenue serait ronde au lieu de suivre
+// la forme de la barre (capsule au moins 1,6 fois plus large que haute).
 const LENS_HELD_RATIO = 1.6;
-// Position de la goutte, ressorts presque critiques (pas de rebond qui sorte de la barre) :
-// suivi du doigt, calage sur un onglet, traîne un peu plus lente pour l'étirement.
-const FOLLOW = { stiffness: 420, damping: 36 };
-const SNAP = { stiffness: 360, damping: 36 };
-const TRAIL = { stiffness: 200, damping: 28 };
+// Position le long de la barre (0 = premier onglet, 1 = dernier) : ressorts à amortissement
+// critique, la goutte se pose sans rebond.
+const FOLLOW = { stiffness: 420, damping: 41 };
+const SNAP = { stiffness: 360, damping: 38 };
 const FAB_GROW = 0.075;    // bouton : gonfle de 7,5 %
 const FAB_BLOOM = 0.35;    // … et sa teinte s'éclaircit vers le blanc
 
@@ -50,7 +53,7 @@ type Placement = { strip: Strip; left: number; winX: number };
 
 // Barre de navigation flottante en verre liquide, bouton « + » séparé.
 // Le verre (shader V2, voir LiquidGlass.tsx) réfracte une capture en direct de l'écran
-// derrière la barre ; la lentille de l'onglet actif glisse en goutte (tête rapide + traîne).
+// derrière la barre. On peut toucher un onglet, ou tenir le pouce et le faire glisser.
 export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const wrap = useRef<ComponentRef<typeof View>>(null);
@@ -58,8 +61,6 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   const [placement, setPlacement] = useState<Placement | null>(null);
   const { scene, version } = useGlassScene(state.routes[state.index].key);
   const { image, ready } = useLiveBackdrop(scene, placement?.strip ?? null);
-  const iconFont = useFont(require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'), 20);
-  const labelFont = useFont(require('@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf'), 11);
 
   // Position de la barre dans la scène affichée, pour savoir quelle bande capturer.
   const measure = useCallback(() => {
@@ -75,87 +76,91 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   }, [scene]);
   useEffect(() => { requestAnimationFrame(measure); }, [measure, width, version]);
 
-  const barW = width - FAB_GAP - BAR_H;
   const n = state.routes.length;
-  const tabW = (barW - 2 * PAD - GAP * (n - 1)) / n;
+  const last = Math.max(1, n - 1);
+  const barW = width - FAB_GAP - BAR_H;
+  const thumbW = (barW - 2 * INSET) / n;
   const left = placement?.left ?? 0;
-  const tabX = (i: number) => left + PAD + i * (tabW + GAP) + tabW / 2; // en coordonnées du canevas
+  const tabX = (i: number) => left + INSET + thumbW * (i + 0.5); // centre d'un onglet, dans le canevas
 
-  const lead = useSharedValue(0);
-  const trail = useSharedValue(0);
-  const placed = useRef(false);
-  // Position de la goutte : la tête suit, la traîne arrive un peu après (étirement liquide).
-  const lensTo = (x: number, held: boolean) => {
-    lead.value = withSpring(x, held ? FOLLOW : SNAP);
-    trail.value = withSpring(x, TRAIL);
-  };
-  useEffect(() => {
-    if (!width || !placement) return;
-    if (!placed.current) { const x = tabX(state.index); lead.value = x; trail.value = x; placed.current = true; return; }
-    lensTo(tabX(state.index), false);
-  }, [state.index, width, placement]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Appui (comme la référence) : la lentille tenue s'élargit, dépasse de la barre, devient
-  // claire et écrase ce qu'on voit au travers ; le « + » gonfle et s'éclaircit.
-  const lensPress = useSharedValue(0);
+  // progress : position du pouce entre le premier (0) et le dernier onglet (1).
+  const progress = useSharedValue(state.index / last);
+  const press = useSharedValue(0);   // gonflement de la lentille tenue
+  const liquid = useSharedValue(0);  // 1 = lentille liquide affichée, 0 = pouce dépoli
   const fabPress = useSharedValue(0);
+  useEffect(() => { progress.value = withSpring(state.index / last, SNAP); }, [state.index, last]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const pressIn = (v: SharedValue<number>) => { v.value = withSpring(1, PRESS_IN); };
   const pressOut = (v: SharedValue<number>) => { v.value = withSpring(0, PRESS_OUT); };
-
   const navigate = (i: number) => {
     if (i === state.index) return;
     haptics.tap();
     navigateToTab(state.routes[i].key);
   };
-  // Doigt (pageX) → x de la goutte dans le canevas, borné aux onglets extrêmes ; la goutte tenue
-  // peut dépasser des bouts de la barre d'autant qu'en haut et en bas (comme la référence).
-  const overtravel = (BAR_H * LENS_HELD_H - BAR_H) / 2;
-  const fingerX = (pageX: number) =>
-    Math.min(tabX(n - 1) + overtravel, Math.max(tabX(0) - overtravel, pageX - (placement?.winX ?? 0) + left));
-  const nearest = (x: number) => Math.min(n - 1, Math.max(0, Math.round((x - tabX(0)) / (tabW + GAP))));
-  // Geste de la barre : appui = la goutte gonfle et vient sous le doigt ; glisser = elle suit ;
-  // relâcher = elle se cale sur l'onglet le plus proche, qui s'ouvre.
+  const fingerProgress = (pageX: number) =>
+    Math.min(1, Math.max(0, (pageX - (placement?.winX ?? 0) + left - tabX(0)) / (tabX(last) - tabX(0) || 1)));
+  const hold = (pageX: number) => { progress.value = withSpring(fingerProgress(pageX), FOLLOW); };
+  const release = (i: number) => {
+    progress.value = withSpring(i / last, SNAP);
+    pressOut(press);
+    liquid.value = withTiming(0, RELEASE_FADE);
+  };
+  // Toucher un onglet ou tenir le pouce : la lentille liquide apparaît sous le doigt et le suit ;
+  // au relâchement, elle se cale sur l'onglet le plus proche, qui s'ouvre.
   const pan = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (e) => { pressIn(lensPress); lensTo(fingerX(e.nativeEvent.pageX), true); },
-    onPanResponderMove: (e) => lensTo(fingerX(e.nativeEvent.pageX), true),
+    onPanResponderGrant: (e) => { liquid.value = 1; pressIn(press); hold(e.nativeEvent.pageX); },
+    onPanResponderMove: (e) => hold(e.nativeEvent.pageX),
     onPanResponderRelease: (e) => {
-      const i = nearest(fingerX(e.nativeEvent.pageX));
-      pressOut(lensPress);
-      lensTo(tabX(i), false);
+      const i = Math.round(fingerProgress(e.nativeEvent.pageX) * last);
+      release(i);
       navigate(i);
     },
-    onPanResponderTerminate: () => { pressOut(lensPress); lensTo(tabX(state.index), false); },
+    onPanResponderTerminate: () => release(state.index),
   });
 
   const cy = MARGIN + BAR_H / 2;
   const heldHalfH = (BAR_H * LENS_HELD_H) / 2;
-  const heldHalfW = Math.max((tabW / 2) * (1 + LENS_GROW_X), heldHalfH * LENS_HELD_RATIO);
+  const heldHalfW = Math.max((thumbW / 2) * (1 + LENS_GROW_X), heldHalfH * LENS_HELD_RATIO);
+  // Nombres calculés ici : le worklet ci-dessous tourne sur le thread UI et ne peut pas appeler tabX.
+  const firstX = tabX(0);
+  const lastX = tabX(last);
   const uniforms = useDerivedValue(() => {
-    // Borné à [0, 1] : le ressort qui dépasse ne doit ni gonfler ni rétrécir la goutte.
-    const lp = Math.min(1, Math.max(0, lensPress.value));
+    // Borné à [0, 1] : le ressort qui dépasse ne doit ni gonfler ni rétrécir la lentille.
+    const p = Math.min(1, Math.max(0, press.value));
     const fp = Math.min(1, Math.max(0, fabPress.value));
+    const t = progress.value;
+    // Au repos le pouce va d'un centre d'onglet à l'autre ; gonflé, il déborde en hauteur comme
+    // la référence, mais ses bords restent dans la longueur de la barre (le « + » est à côté).
+    const rest = firstX + t * (lastX - firstX);
+    const heldLo = left + heldHalfW;
+    const heldHi = left + barW - heldHalfW;
+    const x = rest + (heldLo + t * (heldHi - heldLo) - rest) * p;
     return {
       pd: PD,
       barC: [left + barW / 2, cy],
       barH: [barW / 2, BAR_H / 2],
-      lead: [lead.value, cy],
-      trail: [trail.value, cy],
-      lensH: [tabW / 2 + (heldHalfW - tabW / 2) * lp, LENS_H / 2 + (heldHalfH - LENS_H / 2) * lp],
+      lead: [x, cy],
+      trail: [x, cy],
+      lensH: [thumbW / 2 + (heldHalfW - thumbW / 2) * p, THUMB_H / 2 + (heldHalfH - THUMB_H / 2) * p],
       fabC: [left + barW + FAB_GAP + BAR_H / 2, cy],
       fabR: (BAR_H / 2) * (1 + FAB_GROW * fp),
       lightDir: LIGHT_DIR,
       barTint: BAR_TINT,
-      lensTint: [LENS_TINT[0], LENS_TINT[1], LENS_TINT[2], LENS_TINT[3] * (1 - lp)],
+      lensTint: CLEAR,
       fabTint: [
         FAB_TINT[0] + (1 - FAB_TINT[0]) * FAB_BLOOM * fp,
         FAB_TINT[1] + (1 - FAB_TINT[1]) * FAB_BLOOM * fp,
         FAB_TINT[2] + (1 - FAB_TINT[2]) * FAB_BLOOM * fp,
         FAB_TINT[3],
       ],
-      lensPress: lp,
+      lensPress: p,
+      lensOpacity: liquid.value,
+      thumbC: [rest, cy],
+      thumbH: [thumbW / 2, THUMB_H / 2],
+      frostOpacity: 1 - liquid.value,
     };
   });
 
@@ -170,34 +175,21 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
           n'a pas affiché sa première image, ou si le GPU est indisponible. */}
       <View style={[styles.bar, styles.fallback]} />
       <View style={[styles.fab, styles.fabFallback]} />
-      {placement && width > 0 && (
+      {placement && width > 0 && ready && (
         <Canvas
           pointerEvents="none"
           style={{ position: 'absolute', left: -left, top: -MARGIN, width: placement.strip.width, height: placement.strip.height }}
         >
-          {ready && (
-            <Fill>
-              <Shader source={GLASS} uniforms={uniforms}>
-                <ImageShader image={image} fit="fill" rect={{ x: 0, y: 0, width: placement.strip.width, height: placement.strip.height }} />
-              </Shader>
-            </Fill>
-          )}
-          {state.routes.map((route, i) => {
-            const color = state.index === i ? glass.activeInk : colors.textMuted;
-            const glyph = String.fromCodePoint(Number(Ionicons.glyphMap[ICONS[route.name] ?? 'ellipse-outline']));
-            const label = LABELS[route.name] ?? route.name;
-            return (
-              <Group key={route.key}>
-                {iconFont && <Centered font={iconFont} text={glyph} color={color} cx={tabX(i)} cy={MARGIN + 25} />}
-                {labelFont && <Centered font={labelFont} text={label} color={color} cx={tabX(i)} cy={MARGIN + 44} />}
-              </Group>
-            );
-          })}
+          <Fill>
+            <Shader source={GLASS} uniforms={uniforms}>
+              <ImageShader image={image} fit="fill" rect={{ x: 0, y: 0, width: placement.strip.width, height: placement.strip.height }} />
+            </Shader>
+          </Fill>
         </Canvas>
       )}
       <View style={[StyleSheet.absoluteFill, styles.row]} pointerEvents="box-none">
+        {/* Le toucher passe par le geste de la barre ; chaque onglet reste accessible au lecteur d'écran. */}
         <View style={styles.tabs} {...pan.panHandlers}>
-          {/* Le toucher passe par le geste de la barre ; ces vues servent au lecteur d'écran. */}
           {state.routes.map((route, i) => (
             <View
               key={route.key}
@@ -208,7 +200,10 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
               accessibilityActions={[{ name: 'activate' }]}
               onAccessibilityAction={() => navigate(i)}
               style={styles.tab}
-            />
+            >
+              <Ionicons name={ICONS[route.name] ?? 'ellipse-outline'} size={20} color={glass.ink} style={styles.ink} />
+              <Text style={[styles.label, styles.ink]}>{LABELS[route.name] ?? route.name}</Text>
+            </View>
           ))}
         </View>
         <Pressable
@@ -225,21 +220,17 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   );
 }
 
-// Texte Skia centré sur (cx, cy) d'après ses bornes mesurées (y est la ligne de base).
-function Centered({ font, text, color, cx, cy }: { font: SkFont; text: string; color: string; cx: number; cy: number }) {
-  const b = font.measureText(text);
-  return <SkText font={font} text={text} color={color} x={cx - b.x - b.width / 2} y={cy - b.y - b.height / 2} />;
-}
-
 const styles = StyleSheet.create({
   wrap: { position: 'absolute', left: 20, right: 20, height: BAR_H, flexDirection: 'row', gap: FAB_GAP },
   bar: { flex: 1, borderRadius: BAR_H / 2 },
   fab: { width: BAR_H, borderRadius: BAR_H / 2 },
-  // Rentré d'1 dp : caché sous le bord adouci du verre (sinon liseré bleuté autour).
+  // Rentré d'1 dp : caché sous le bord adouci du verre (sinon liseré autour).
   fallback: { backgroundColor: glass.fill, margin: 1 },
   fabFallback: { backgroundColor: colors.accent, margin: 1 },
   row: { flexDirection: 'row', gap: FAB_GAP },
-  tabs: { flex: 1, flexDirection: 'row', padding: PAD, gap: GAP },
-  tab: { flex: 1 },
+  tabs: { flex: 1, flexDirection: 'row', padding: INSET },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  label: { fontSize: 11, fontFamily: font.semibold, color: glass.ink },
+  ink: { textShadowColor: glass.inkGlow, textShadowRadius: 4 },
   fabTouch: { width: BAR_H, height: BAR_H, alignItems: 'center', justifyContent: 'center' },
 });
