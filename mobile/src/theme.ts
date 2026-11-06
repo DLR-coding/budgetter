@@ -26,15 +26,14 @@ export const colors = {
   warnBg: '#2E2216',
 };
 
-// Verre liquide (src/components/LiquidGlass.tsx), style de la navbar « Press » de
-// webgl-apple-liquid-glass : barre en verre clair laiteux, pouce gris dépoli, encre sombre.
+// Verre liquide (src/components/LiquidGlass.tsx). Teintes : opacité de la couleur posée
+// sur ce que le verre transmet (0 = verre clair).
 export const glass = {
-  fill: 'rgba(214,215,219,0.92)',  // repli de la barre tant que le verre n'est pas affiché
-  barTone: '#F9F7F4',              // ton « light » de la référence (0.975, 0.970, 0.955)
-  barTint: 0.86,                   // réglage « tint » de la barre dans la référence (0 à 1,5)
-  fabTint: 0.75,                   // bouton « + » : opacité de la teinte colors.accent
-  ink: 'rgba(22,25,31,0.88)',      // icônes et libellés sur le verre clair
-  inkGlow: 'rgba(255,255,255,0.65)',
+  fill: 'rgba(32,44,62,0.92)', // repli de la barre tant que le verre n'est pas affiché
+  barTint: 0.35,               // barre : voile de colors.bg, pour la lisibilité des onglets
+  lensTint: 0.16,              // bulle de l'onglet actif au repos : voile clair (colors.text)
+  fabTint: 0.75,               // bouton « + » : verre teinté colors.accent
+  activeInk: '#FFFFFF',        // icône et libellé de l'onglet actif
 };
 
 export const radius = { card: 22, pill: 999, key: 18 };

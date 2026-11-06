@@ -26,10 +26,6 @@ uniform float4 barTint;   // rgb + opacité de teinte
 uniform float4 lensTint;
 uniform float4 fabTint;
 uniform float lensPress;  // 0 au repos, 1 lentille tenue (appui sur un onglet)
-uniform float lensOpacity;  // lentille liquide visible seulement tenue (fondu au relâchement)
-uniform float2 thumbC;      // pouce au repos : capsule dépolie (2D, comme la référence)
-uniform float2 thumbH;
-uniform float frostOpacity;
 
 // Matériau V2 par défaut (DEFAULT_MATERIAL_V2) ; la lentille tenue passe au matériau
 // PRESSED_CONTROL_MATERIAL_V2 (réfraction 17, sans dispersion).
@@ -224,47 +220,18 @@ half4 shade(int chosen, float2 point, float chosenD) {
   return half4(hairColor * hairAlpha + color * mask * (1.0 - hairAlpha), alpha);
 }
 
-// Pouce au repos (drawRestingFrostedThumb de la référence) : verre de la barre flouté, teinte
-// neutralisée vers un gris froid (fusion « color » à 72 %), puis voile gris à 24 %.
-half4 frosted(float2 point) {
-  float r = max(5.0, thumbH.y * 2.0 * 0.105);
-  // 9 lectures (centre + couronne) : assez pour un dépoli, sans alourdir la compilation.
-  float3 b = sharp(point) * 0.2;
-  // Couronne tournée d'un angle pseudo-aléatoire par pixel : un grain fin plutôt que des anneaux.
-  float jitter = fract(sin(dot(point, float2(12.9898, 78.233))) * 43758.5453) * 0.785398;
-  for (int i = 0; i < 8; i++) {
-    float a = float(i) * 0.785398 + jitter;
-    b += sharp(point + float2(cos(a), sin(a)) * r) * 0.1;
-  }
-  b = mix(b, barTint.rgb, barTint.a * 0.88);
-  float3 hue = float3(0.580, 0.588, 0.608);
-  float3 recoloured = clamp(hue + (luminance(b) - luminance(hue)), 0.0, 1.0);
-  b = mix(b, recoloured, 0.72);
-  b = mix(b, float3(0.557, 0.569, 0.596), 0.24);
-  return half4(b, 1.0);
-}
-
 half4 main(float2 point) {
   float dFab = shapeSdf(2, point);
   if (dFab <= 2.1) return shade(2, point, dFab);
-  // Barre, puis pouce dépoli, puis lentille liquide, composés dans cet ordre : sur les bords
-  // adoucis, c'est la couche du dessous qui transparaît (et non le fond posé sous le canevas).
+  // Lentille composée par-dessus la barre : sur son bord adouci, c'est la barre qui transparaît
+  // (et non le fond posé sous le canevas, qui faisait un liseré).
   half4 c = half4(0.0);
   float dBar = shapeSdf(0, point);
   if (dBar <= 2.1) c = shade(0, point, dBar);
-  if (frostOpacity > 0.001) {
-    float dThumb = pill(point - thumbC, thumbH);
-    if (dThumb <= 1.0) {
-      float m = (1.0 - smoothstep(0.0, 1.35 / pd, dThumb)) * frostOpacity;
-      c = frosted(point) * m + c * (1.0 - m);
-    }
-  }
-  if (lensOpacity > 0.001) {
-    float dLens = shapeSdf(1, point);
-    if (dLens <= 2.1) {
-      half4 l = shade(1, point, dLens) * lensOpacity;
-      c = l + c * (1.0 - l.a);
-    }
+  float dLens = shapeSdf(1, point);
+  if (dLens <= 2.1) {
+    half4 l = shade(1, point, dLens);
+    c = l + c * (1.0 - l.a);
   }
   return c;
 }
@@ -282,11 +249,5 @@ export const LIGHT_DIR = [Math.cos(LIGHT_ANGLE), -Math.sin(LIGHT_ANGLE)];
 export function tintUniform(hex: string, amount: number) {
   const [r, g, b] = Array.from(Skia.Color(hex));
   return [r, g, b, amount];
-}
-
-// Réglage « tint » de la référence (0 à 1,5) → opacité de la teinte, comme dans son shader V2.
-export function tintOpacity(tint: number) {
-  const t = Math.min(1, Math.max(0, tint / 1.5));
-  return t * t * (3 - 2 * t) * 0.78;
 }
 
