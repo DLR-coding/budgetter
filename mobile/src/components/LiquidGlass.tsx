@@ -68,16 +68,22 @@ float pillSoft(float2 p, float2 h) {
   return sdRoundBoxSoft(p, h, m, clamp(m * 0.08, 1.5, 12.0));
 }
 
+// Goutte : tête et traîne fusionnées. Le smooth min de deux formes superposées les gonfle de
+// k/4 ; on le retire là où elles se recouvrent, pour qu'au repos la bulle ait sa vraie taille.
+float goutte(float a, float b) {
+  return smoothUnion(a, b, 14.0) + 3.5 * pow(1.0 - min(abs(a - b) / 14.0, 1.0), 2.0);
+}
+
 // 0 = barre, 1 = lentille, 2 = bouton.
 float shapeSdf(int s, float2 p) {
   if (s == 0) return pill(p - barC, barH);
-  if (s == 1) return smoothUnion(pill(p - lead, lensH), pill(p - trail, lensH), 14.0);
+  if (s == 1) return goutte(pill(p - lead, lensH), pill(p - trail, lensH));
   return length(p - fabC) - fabR;
 }
 // Champ à arête adoucie, pour les normales uniquement.
 float shapeField(int s, float2 p) {
   if (s == 0) return pillSoft(p - barC, barH);
-  if (s == 1) return smoothUnion(pillSoft(p - lead, lensH), pillSoft(p - trail, lensH), 14.0);
+  if (s == 1) return goutte(pillSoft(p - lead, lensH), pillSoft(p - trail, lensH));
   return length(p - fabC) - fabR;
 }
 float2 shapeCenter(int s) {

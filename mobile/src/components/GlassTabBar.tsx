@@ -31,18 +31,23 @@ const LENS_TINT = tintUniform(colors.text, glass.lensTint);
 const FAB_TINT = tintUniform(colors.accent, glass.fabTint);
 
 // Appui (press-effects.js, DEFAULT_NAVIGATION_LENS) : la bulle tenue perd son voile, devient
-// 13 % plus large et 1,24 fois plus haute que la barre, et écrase ce qu'on voit au travers.
+// plus large et plus haute que la barre (elle en déborde), et écrase ce qu'on voit au travers.
 const PRESS_IN = { stiffness: 520, damping: 28 };
 const PRESS_OUT = { stiffness: 540, damping: 31 };
 const LENS_GROW_X = 0.13;
-const LENS_HELD_H = 1.24;
-// Nos onglets sont étroits : sans ce minimum, la lentille tenue serait ronde au lieu de suivre
-// la forme de la barre (capsule au moins 1,6 fois plus large que haute).
-const LENS_HELD_RATIO = 1.6;
-// Position le long de la barre (0 = premier onglet, 1 = dernier) : ressorts à amortissement
-// critique, la goutte se pose sans rebond.
-const FOLLOW = { stiffness: 420, damping: 41 };
-const SNAP = { stiffness: 360, damping: 38 };
+const LENS_HELD_H = 1.125; // référence : 1,24 ; un peu moins haute pour rester une capsule
+// Nos onglets sont étroits : sans ce minimum, la bulle tenue serait ronde au lieu de suivre la
+// forme de la barre. 1,35 (environ 97 × 72 dp) : centrée sur « Mois » ou « Réglages », elle ne
+// dépasse la barre que d'environ 4 dp (le « + » est à 10 dp, le bord de l'écran à 20 dp).
+const LENS_HELD_RATIO = 1.35;
+// Position le long de la barre (0 = premier onglet, 1 = dernier). Ressorts un peu sous-amortis :
+// la bulle dépasse légèrement puis revient (rebond). La traîne, plus souple, étire la goutte en
+// route puis la recolle. Au-delà du premier ou du dernier onglet, le dépassement est amorti
+// comme un élastique et plafonné à EDGE_GIVE.
+const FOLLOW = { stiffness: 520, damping: 34 };
+const SNAP = { stiffness: 320, damping: 22 };
+const LAG = { stiffness: 200, damping: 20 };
+const EDGE_GIVE = 6; // dp
 const FAB_GROW = 0.075;    // bouton : gonfle de 7,5 %
 const FAB_BLOOM = 0.35;    // … et sa teinte s'éclaircit vers le blanc
 
@@ -83,9 +88,14 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
 
   // progress : position de la bulle entre le premier (0) et le dernier onglet (1).
   const progress = useSharedValue(state.index / last);
+  const lag = useSharedValue(state.index / last); // traîne de la goutte
   const press = useSharedValue(0);   // gonflement de la bulle tenue
   const fabPress = useSharedValue(0);
-  useEffect(() => { progress.value = withSpring(state.index / last, SNAP); }, [state.index, last]); // eslint-disable-line react-hooks/exhaustive-deps
+  const moveTo = (t: number, held: boolean) => {
+    progress.value = withSpring(t, held ? FOLLOW : SNAP);
+    lag.value = withSpring(t, LAG);
+  };
+  useEffect(() => { moveTo(state.index / last, false); }, [state.index, last]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pressIn = (v: SharedValue<number>) => { v.value = withSpring(1, PRESS_IN); };
   const pressOut = (v: SharedValue<number>) => { v.value = withSpring(0, PRESS_OUT); };
@@ -96,9 +106,9 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   };
   const fingerProgress = (pageX: number) =>
     Math.min(1, Math.max(0, (pageX - (placement?.winX ?? 0) + left - tabX(0)) / (tabX(last) - tabX(0) || 1)));
-  const hold = (pageX: number) => { progress.value = withSpring(fingerProgress(pageX), FOLLOW); };
+  const hold = (pageX: number) => moveTo(fingerProgress(pageX), true);
   const release = (i: number) => {
-    progress.value = withSpring(i / last, SNAP);
+    moveTo(i / last, false);
     pressOut(press);
   };
   // Toucher un onglet ou tenir la bulle : elle gonfle sous le doigt et le suit ;
@@ -123,25 +133,24 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   // Nombres calculés ici : le worklet ci-dessous tourne sur le thread UI et ne peut pas appeler tabX.
   const firstX = tabX(0);
   const lastX = tabX(last);
+  const span = lastX - firstX || 1;
+  const give = EDGE_GIVE / span;
   const uniforms = useDerivedValue(() => {
-    // Borné à [0, 1] : le ressort qui dépasse ne doit ni gonfler ni rétrécir la lentille.
+    // Borné à [0, 1] : le ressort qui dépasse ne doit ni gonfler ni rétrécir la bulle.
     const p = Math.min(1, Math.max(0, press.value));
     const fp = Math.min(1, Math.max(0, fabPress.value));
-    // Bornée à [0, 1] : relâché en plein glissement, le ressort repart avec la vitesse du doigt
-    // et peut dépasser sa cible ; la bulle sortirait alors de la barre (sur le « + » ou le bord).
-    const t = Math.min(1, Math.max(0, progress.value));
-    // Au repos la bulle va d'un centre d'onglet à l'autre ; gonflé, il déborde en hauteur comme
-    // la référence, mais ses bords restent dans la longueur de la barre (le « + » est à côté).
-    const rest = firstX + t * (lastX - firstX);
-    const heldLo = left + heldHalfW;
-    const heldHi = left + barW - heldHalfW;
-    const x = rest + (heldLo + t * (heldHi - heldLo) - rest) * p;
+    // Dépassement élastique aux bouts : quasi libre au début, plafonné à EDGE_GIVE (le ressort
+    // relâché en plein glissement repart avec la vitesse du doigt et sortirait de la barre).
+    const soft = (v: number) => (v < 0 ? (-give * -v) / (give - v) : v > 1 ? 1 + (give * (v - 1)) / (give + v - 1) : v);
+    // Bulle centrée sur sa position, même tenue (elle peut alors déborder un peu de la barre).
+    const x = firstX + soft(progress.value) * span;
+    const xLag = firstX + soft(lag.value) * span;
     return {
       pd: PD,
       barC: [left + barW / 2, cy],
       barH: [barW / 2, BAR_H / 2],
       lead: [x, cy],
-      trail: [x, cy],
+      trail: [xLag, cy],
       lensH: [thumbW / 2 + (heldHalfW - thumbW / 2) * p, THUMB_H / 2 + (heldHalfH - THUMB_H / 2) * p],
       fabC: [left + barW + FAB_GAP + BAR_H / 2, cy],
       fabR: (BAR_H / 2) * (1 + FAB_GROW * fp),
