@@ -82,7 +82,7 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
   };
   useEffect(() => {
     if (!width || !placement) return;
-    if (!placed.current) { lead.value = tabX(state.index); trail.value = lead.value; placed.current = true; return; }
+    if (!placed.current) { const x = tabX(state.index); lead.value = x; trail.value = x; placed.current = true; return; }
     moveLens(state.index);
   }, [state.index, width, placement]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -120,7 +120,7 @@ export function GlassTabBar({ state, navigateToTab }: BottomTabBarProps) {
       ],
       lensPress: lp,
     };
-  }, [left, barW, tabW]);
+  });
 
   return (
     <View
