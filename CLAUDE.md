@@ -90,3 +90,6 @@ dépendance à React ni Supabase, et la couvrir de tests.
 - Avant de coder une étape : proposer un plan court, attendre validation.
 - Après chaque changement : `npx tsc --noEmit` et les tests doivent passer.
 - Commits petits et explicites, en français.
+- Suivi du projet : base Notion « Features » en kanban (une carte = une feature), page Budget App :
+  https://app.notion.com/p/09f65062667243a5a4b70dd291fce980 (data source `collection://1773af46-fb5a-4674-a323-a973adfae077`).
+  Feature livrée dans un APK → « À tester » avec ses commits ; validée sur le téléphone → « Terminé ».
