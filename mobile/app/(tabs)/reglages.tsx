@@ -111,6 +111,12 @@ export default function SettingsScreen() {
         <ListRow label="Service IA" sublabel={aiSettingsSummary(ai)} chevron onPress={() => setEditingAi(true)} />
       </Card>
 
+      <SectionTitle title="Apparence" />
+      <Card>
+        <ListRow label="Verre liquide" sublabel="Régler le verre de la barre de navigation" chevron
+          onPress={() => router.push('/verre')} />
+      </Card>
+
       <SectionTitle title="Données" />
       <Card style={{ opacity: 0.6 }}>
         <ListRow label="Exporter en Excel" value="Bientôt" valueTone="muted" chevron />

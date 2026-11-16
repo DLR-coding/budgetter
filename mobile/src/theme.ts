@@ -30,6 +30,13 @@ export const colors = {
   dangerBg: '#33181A',
 };
 
+// Verre liquide (src/components/LiquidGlass.tsx) ; le matériau et les voiles se règlent dans
+// l'écran « Verre liquide » (src/lib/glass-settings.ts).
+export const glass = {
+  fill: 'rgba(32,44,62,0.92)', // repli de la barre tant que le verre n'est pas affiché
+  activeInk: '#FFFFFF',        // icône et libellé de l'onglet actif
+};
+
 export const radius = { card: 22, pill: 999, key: 18 };
 export const space = { screen: 20, gap: 10 };
 
