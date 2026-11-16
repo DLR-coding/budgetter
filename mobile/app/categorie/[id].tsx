@@ -135,7 +135,7 @@ export default function CategoryScreen() {
       <ScreenHeader title={cat.name} subtitle={`${group?.name ?? ''} · ${monthName}`} left="back"
         right={<CircleButton icon="ellipsis-horizontal" accessibilityLabel="Options du prévu" onPress={() => setMenu('menu')} />} />
 
-      <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 24 }]}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 24 }]}>
         <Card style={s.summary}>
           <View style={s.summaryTop}>
             <Text style={s.big} numberOfLines={1} adjustsFontSizeToFit>{formatEuros(actual)}</Text>

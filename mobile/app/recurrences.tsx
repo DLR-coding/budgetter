@@ -37,7 +37,7 @@ export default function RecurrencesScreen() {
     <View style={s.screen}>
       <ScreenHeader title="Charges récurrentes" left="back"
         right={<CircleButton icon="add" accessibilityLabel="Ajouter une charge" onPress={() => setEditing(null)} />} />
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         {error && <Text style={s.error}>Impossible de charger les charges : {error}</Text>}
         <SectionTitle title={`${recs.length} charge${recs.length > 1 ? 's' : ''}`} right="Ajoutées chaque mois" />
         <Card>

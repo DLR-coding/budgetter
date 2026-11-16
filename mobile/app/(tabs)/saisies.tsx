@@ -104,7 +104,7 @@ export default function SaisiesScreen() {
       </ScrollView>
 
       <BottomSheet visible={monthSheet} onClose={() => setMonthSheet(false)} title="Mois">
-        <ScrollView contentContainerStyle={{ gap: 6 }}>
+        <ScrollView contentContainerStyle={{ gap: 6 }} keyboardShouldPersistTaps="handled">
           {months.map((m) => {
             const selected = m === month;
             return (

@@ -168,7 +168,7 @@ export default function Ticket() {
   return (
     <View style={s.screen}>
       {header}
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         <View style={s.merchant}>
           <View style={s.merchantIcon}>
             <Ionicons name="receipt-outline" size={24} color={colors.textMuted} />

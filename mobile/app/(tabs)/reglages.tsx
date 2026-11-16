@@ -52,7 +52,7 @@ export default function SettingsScreen() {
   const others = recs.length - top.length;
 
   return (
-    <ScrollView style={s.screen} contentContainerStyle={[s.content, { paddingTop: insets.top + 40 }]}>
+    <ScrollView keyboardShouldPersistTaps="handled" style={s.screen} contentContainerStyle={[s.content, { paddingTop: insets.top + 40 }]}>
       <Text style={s.title} accessibilityRole="header">Réglages</Text>
       {error && <Text style={s.error}>Impossible de charger les réglages : {error}</Text>}
 

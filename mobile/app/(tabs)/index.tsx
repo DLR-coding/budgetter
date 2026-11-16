@@ -131,7 +131,7 @@ export default function MonthScreen() {
 
   return (
     <GestureDetector gesture={swipe}>
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         style={s.screen}
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}

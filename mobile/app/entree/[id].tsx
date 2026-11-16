@@ -111,7 +111,7 @@ export default function EntryScreen() {
         </Pressable>
       } />
 
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         <View style={s.hero}>
           <EntryIcon source={entry.source} kind={kind} size={54} />
           <Text style={[s.amount, kind === 'revenu' && { color: colors.income }]} numberOfLines={1} adjustsFontSizeToFit>

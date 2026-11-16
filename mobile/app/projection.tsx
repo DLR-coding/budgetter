@@ -27,7 +27,7 @@ export default function ProjectionScreen() {
   return (
     <View style={s.screen}>
       <View style={s.pad}><ScreenHeader title="Projection" left="back" /></View>
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         {error && <Text style={s.error}>Impossible de charger la projection : {error}</Text>}
         {!rows && !error && <ActivityIndicator color={colors.accent} />}
 

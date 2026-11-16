@@ -55,7 +55,7 @@ export default function GroupScreen() {
             <CircleButton icon="add" accessibilityLabel="Ajouter une catégorie" onPress={() => setEditing(null)} />
           </View>
         )} />
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         {error && <Text style={s.error}>Impossible de charger les catégories : {error}</Text>}
 
         <SectionTitle title="Catégories" right="Prévu par défaut" />

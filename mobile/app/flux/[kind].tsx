@@ -55,7 +55,7 @@ export default function FluxScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader title={title} subtitle={monthLabel(month).toLowerCase()} left="back" />
-      <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 24 }]}
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 24 }]}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}>
         {error && <Text style={s.error}>Impossible de charger les {title.toLowerCase()} : {error}</Text>}
         {!view && !error && <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />}
