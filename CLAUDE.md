@@ -90,6 +90,12 @@ dépendance à React ni Supabase, et la couvrir de tests.
   un **build de développement** (`eas build --profile development --platform android`, à refaire
   à chaque ajout de code natif), lancé avec `npx expo start --dev-client --tunnel`
   (le réseau WSL n’est pas joignable directement). Android 8 (API 26) minimum, Vulkan requis.
+- **Build local Windows (sans quota EAS)** : clone dans `C:\Users\drakotomahefa\Desktop\code\budget-app`
+  (`git pull` depuis WSL, `.env` copié à la main). Dans `mobile/` : `npm ci`, puis
+  `set APP_VARIANT=local&& npx expo prebuild --platform android --no-install` (si paquets natifs changés),
+  puis dans `android/` avec `JAVA_HOME` = JDK 21 : `gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a`.
+  APK : `android/app/build/outputs/apk/release/app-release.apk` → `adb install -r`. Appli « Budgetter (local) »
+  (`com.dlrcoding.budget.local`, `app.config.js`), installée à côté de l'appli EAS (signature différente).
 - Variables dans `mobile/.env` (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`).
   Ne jamais committer `.env`.
 
