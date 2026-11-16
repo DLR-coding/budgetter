@@ -41,6 +41,7 @@ export default function Saisie() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [date, setDate] = useState(() => new Date());
   const [merchant, setMerchant] = useState('');
+  const [note, setNote] = useState('');
   const [exceptional, setExceptional] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
@@ -84,7 +85,7 @@ export default function Saisie() {
 
   const openArticles = () => router.push({
     pathname: '/saisie-articles',
-    params: { kind, date: isoDay(date), merchant, exceptional: exceptional ? '1' : '0', categoryId: categoryId ?? '', amount: input.replace(/[+×]$/, '') },
+    params: { kind, date: isoDay(date), merchant, note, exceptional: exceptional ? '1' : '0', categoryId: categoryId ?? '', amount: input.replace(/[+×]$/, '') },
   });
 
   const save = async () => {
@@ -95,6 +96,7 @@ export default function Saisie() {
       await saveEntry({
         date: isoDay(date),
         merchant: merchant.trim() || undefined,
+        note: note.trim() || undefined,
         exceptional: kind === 'depense' && exceptional,
         source: formula ? 'formule' : 'manuel',
         formula: formula ? input : undefined,
@@ -181,7 +183,7 @@ export default function Saisie() {
         </Pressable>
         <Pressable style={[s.pill, s.shrink]} onPress={() => setNoteOpen(true)} accessibilityLabel="Note">
           <Ionicons name="create-outline" size={18} color={colors.text} />
-          <Text style={[s.pillText, s.shrink]} numberOfLines={1}>{merchant.trim() || 'Note'}</Text>
+          <Text style={[s.pillText, s.shrink]} numberOfLines={1}>{merchant.trim() || note.trim() || 'Note'}</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
         <Pressable style={s.pill} onPress={openArticles} accessibilityLabel="Ajouter un article">
@@ -222,9 +224,13 @@ export default function Saisie() {
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           <Pressable style={s.backdrop} onPress={() => setNoteOpen(false)} accessibilityLabel="Fermer">
             <Pressable style={s.noteBox}>
-              <Text style={s.cardTitle}>Note</Text>
+              <Text style={s.cardTitle}>Commerçant</Text>
               <TextInput style={s.noteInput} value={merchant} onChangeText={setMerchant} autoFocus
-                placeholder="Commerçant ou note" placeholderTextColor={colors.textFaint}
+                placeholder="Auchan, Lidl…" placeholderTextColor={colors.textFaint} accessibilityLabel="Commerçant"
+                returnKeyType="next" />
+              <Text style={s.cardTitle}>Note</Text>
+              <TextInput style={s.noteInput} value={note} onChangeText={setNote}
+                placeholder="Une précision" placeholderTextColor={colors.textFaint} accessibilityLabel="Note"
                 returnKeyType="done" onSubmitEditing={() => setNoteOpen(false)} />
               <Pressable style={s.noteOk} onPress={() => setNoteOpen(false)}>
                 <Text style={s.validateText}>OK</Text>

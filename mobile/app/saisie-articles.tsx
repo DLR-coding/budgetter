@@ -13,7 +13,7 @@ import { parseFormula } from '../src/lib/formula';
 import { colors, font, radius } from '../src/theme';
 import { haptics } from '../src/lib/haptics';
 
-type Params = { entryId?: string; kind?: string; date?: string; merchant?: string; exceptional?: string; categoryId?: string; amount?: string };
+type Params = { entryId?: string; kind?: string; date?: string; merchant?: string; note?: string; exceptional?: string; categoryId?: string; amount?: string };
 type Item = { key: number; label: string; rawLabel?: string; quantity: number; unitPriceCents: number; categoryId: string };
 
 // Teintes des pastilles, selon tintFor du groupe.
@@ -103,7 +103,7 @@ export default function SaisieArticles() {
         return;
       }
       await saveEntry({
-        date, merchant: merchant.trim() || undefined, exceptional: kind === 'depense' && exceptional, source: 'manuel', lines,
+        date, merchant: merchant.trim() || undefined, note: p.note?.trim() || undefined, exceptional: kind === 'depense' && exceptional, source: 'manuel', lines,
       });
       // Ferme aussi la saisie rapide restée dessous.
       haptics.success();
