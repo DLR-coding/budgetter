@@ -1,17 +1,21 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Fragment, useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CategoryEditSheet } from '../../src/components/CategoryEditSheet';
+import { GroupEditSheet } from '../../src/components/GroupEditSheet';
 import { Card, CircleButton, Divider, ListRow, ScreenHeader, SectionTitle } from '../../src/components/ui';
 import { formatEuros } from '../../src/lib/budget';
 import { loadCategories, type CategoryRow, type GroupRow } from '../../src/lib/data';
 import { colors, font } from '../../src/theme';
 
 // Catégories d'un groupe (actives puis archivées) ; appui → modifier, archiver ou désarchiver.
+// Crayon de l'en-tête → renommer, déplacer ou supprimer le groupe.
 export default function GroupScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [cats, setCats] = useState<CategoryRow[]>([]);
+  const [allCats, setAllCats] = useState<CategoryRow[]>([]);
+  const [editingGroup, setEditingGroup] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<CategoryRow | null | undefined>(undefined); // undefined = fermé, null = création
@@ -20,6 +24,7 @@ export default function GroupScreen() {
     try {
       const c = await loadCategories({ includeArchived: true });
       setGroups(c.groups);
+      setAllCats(c.cats);
       setCats(c.cats.filter((x) => x.group_id === id));
       setError(null);
     } catch (e) {
@@ -44,7 +49,12 @@ export default function GroupScreen() {
   return (
     <View style={s.screen}>
       <ScreenHeader title={group?.name ?? ''} left="back"
-        right={<CircleButton icon="add" accessibilityLabel="Ajouter une catégorie" onPress={() => setEditing(null)} />} />
+        right={(
+          <View style={s.headerActions}>
+            <CircleButton icon="create-outline" accessibilityLabel="Modifier le groupe" onPress={() => setEditingGroup(true)} />
+            <CircleButton icon="add" accessibilityLabel="Ajouter une catégorie" onPress={() => setEditing(null)} />
+          </View>
+        )} />
       <ScrollView contentContainerStyle={s.content}>
         {error && <Text style={s.error}>Impossible de charger les catégories : {error}</Text>}
 
@@ -64,6 +74,13 @@ export default function GroupScreen() {
 
       <CategoryEditSheet visible={editing !== undefined} groups={groups} category={editing ?? null} defaultGroupId={id}
         onClose={() => setEditing(undefined)} onSaved={load} />
+      <GroupEditSheet visible={editingGroup} group={group ?? null} groups={groups} cats={allCats}
+        onClose={() => setEditingGroup(false)}
+        onSaved={async () => {
+          // Groupe supprimé : retour aux Réglages ; sinon on recharge (nouveau nom, nouvel ordre).
+          const { groups: g } = await loadCategories({ includeArchived: true });
+          if (!g.some((x) => x.id === id)) { setEditingGroup(false); router.back(); } else load();
+        }} />
     </View>
   );
 }
@@ -72,4 +89,5 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 20 },
   content: { paddingTop: 8, paddingBottom: 40, gap: 8 },
   error: { color: colors.warn, fontFamily: font.regular, fontSize: 14 },
+  headerActions: { flexDirection: 'row', gap: 8 },
 });

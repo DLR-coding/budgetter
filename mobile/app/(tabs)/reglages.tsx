@@ -5,15 +5,15 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AiSettingsSheet } from '../../src/components/AiSettingsSheet';
 import { BudgetAvatar, BudgetEditSheet, BudgetSheet } from '../../src/components/BudgetSheet';
-import { CategoryEditSheet } from '../../src/components/CategoryEditSheet';
+import { GroupEditSheet } from '../../src/components/GroupEditSheet';
 import { Card, Divider, ListRow, SectionTitle } from '../../src/components/ui';
 import { loadAiSettings } from '../../src/lib/ai-settings';
-import { formatEuros } from '../../src/lib/budget';
+import { formatEuros, type GroupKind } from '../../src/lib/budget';
 import {
   loadBudgets, loadCategories, loadRecurrences, type BudgetRow, type CategoryRow, type GroupRow, type RecurrenceRow,
 } from '../../src/lib/data';
 import { aiSettingsSummary, type AiSettings } from '../../src/lib/receipt';
-import { dayLabel, groupValue } from '../../src/lib/settings';
+import { dayLabel, groupSummary, KINDS } from '../../src/lib/settings';
 import { colors, font } from '../../src/theme';
 
 const SHOWN = 3;
@@ -24,7 +24,7 @@ export default function SettingsScreen() {
   const [cats, setCats] = useState<CategoryRow[]>([]);
   const [recs, setRecs] = useState<RecurrenceRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [addingGroup, setAddingGroup] = useState<GroupKind | null>(null);
   const [ai, setAi] = useState<AiSettings | null>(null);
   const [editingAi, setEditingAi] = useState(false);
   const [budgets, setBudgets] = useState<{ budgets: BudgetRow[]; currentId: string | null }>({ budgets: [], currentId: null });
@@ -67,17 +67,28 @@ export default function SettingsScreen() {
         ))}
       </Card>
 
-      <SectionTitle title="Catégories et prévus" right={{ label: 'Ajouter', onPress: () => setAdding(true) }} />
-      <Card>
-        {groups.map((g, i) => (
-          <Fragment key={g.id}>
-            {i > 0 && <Divider />}
-            <ListRow label={g.name} chevron valueTone="muted"
-              value={groupValue(cats.filter((c) => c.group_id === g.id).map((c) => c.default_planned_cents))}
-              onPress={() => router.push({ pathname: '/groupe/[id]', params: { id: g.id } })} />
+      {/* Catégories et prévus, rangés par type → groupes (Fixes, Bouffe…) → catégories (dans l'écran du groupe). */}
+      {KINDS.map(({ kind, label }) => {
+        const list = groups.filter((g) => g.kind === kind);
+        return (
+          <Fragment key={kind}>
+            <SectionTitle title={label} right={{ label: 'Nouveau groupe', onPress: () => setAddingGroup(kind) }} />
+            <Card>
+              {list.length === 0 && <ListRow label="Aucun groupe" />}
+              {list.map((g, i) => {
+                const sum = groupSummary(cats.filter((c) => c.group_id === g.id).map((c) => c.default_planned_cents));
+                return (
+                  <Fragment key={g.id}>
+                    {i > 0 && <Divider />}
+                    <ListRow label={g.name} sublabel={sum.count} value={sum.planned} valueTone="muted" chevron
+                      onPress={() => router.push({ pathname: '/groupe/[id]', params: { id: g.id } })} />
+                  </Fragment>
+                );
+              })}
+            </Card>
           </Fragment>
-        ))}
-      </Card>
+        );
+      })}
 
       <SectionTitle title="Charges récurrentes" right="Ajoutées chaque mois" />
       <Card>
@@ -105,7 +116,8 @@ export default function SettingsScreen() {
         <ListRow label="Exporter en Excel" value="Bientôt" valueTone="muted" chevron />
       </Card>
 
-      <CategoryEditSheet visible={adding} groups={groups} category={null} onClose={() => setAdding(false)} onSaved={load} />
+      <GroupEditSheet visible={addingGroup != null} group={null} defaultKind={addingGroup ?? undefined} groups={groups} cats={cats}
+        onClose={() => setAddingGroup(null)} onSaved={load} />
       <BudgetSheet visible={switching} onClose={() => setSwitching(false)} onChanged={load} />
       <BudgetEditSheet budget={editingBudget} isLast={budgets.budgets.length <= 1}
         onClose={() => setEditingBudget(null)} onSaved={load} />

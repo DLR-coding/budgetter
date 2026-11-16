@@ -1,18 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatEuros } from './budget.ts';
-import { clampDay, dayLabel, groupValue, parsePlannedCents } from './settings.ts';
+import { clampDay, dayLabel, groupSummary, moveGroup, parsePlannedCents } from './settings.ts';
 
 test('jour : « 1er » puis chiffres', () => {
   assert.equal(dayLabel(1), 'Le 1er du mois');
   assert.equal(dayLabel(5), 'Le 5 du mois');
 });
 
-test('groupe : total des prévus, sinon nombre de catégories', () => {
-  assert.equal(groupValue([70926, 0]), `${formatEuros(70926)} / mois`);
-  assert.equal(groupValue([0, 0, 0]), '3 catégories');
-  assert.equal(groupValue([0]), '1 catégorie');
-  assert.equal(groupValue([]), '0 catégorie');
+test('groupe : toujours le nombre de catégories et le total des prévus', () => {
+  assert.deepEqual(groupSummary([70926, 0]), { count: '2 catégories', planned: `${formatEuros(70926)} / mois` });
+  assert.deepEqual(groupSummary([0]), { count: '1 catégorie', planned: `${formatEuros(0)} / mois` });
+  assert.equal(groupSummary([]).count, '0 catégorie');
+});
+
+test('ordre des groupes : échange avec le voisin du même type, renumérote', () => {
+  const groups = [
+    { id: 'rev', kind: 'revenu' as const, position: 0 },
+    { id: 'fix', kind: 'depense' as const, position: 1 },
+    { id: 'ep', kind: 'epargne' as const, position: 2 },
+    { id: 'bouffe', kind: 'depense' as const, position: 3 },
+  ];
+  // Bouffe monte au-dessus de Fixes en sautant Épargne (autre type).
+  assert.deepEqual(moveGroup(groups, 'bouffe', -1), [{ id: 'bouffe', position: 1 }, { id: 'fix', position: 3 }]);
+  assert.deepEqual(moveGroup(groups, 'fix', -1), []); // déjà premier des dépenses
+  assert.deepEqual(moveGroup(groups, 'rev', 1), []); // seul revenu
+  // Positions en double (anciennes données) : renumérotées.
+  const dup = [{ id: 'a', kind: 'depense' as const, position: 0 }, { id: 'b', kind: 'depense' as const, position: 0 }];
+  assert.deepEqual(moveGroup(dup, 'b', -1), [{ id: 'a', position: 1 }]); // b est déjà à 0
 });
 
 test('prévu : vide = 0, négatif ou illisible refusé', () => {

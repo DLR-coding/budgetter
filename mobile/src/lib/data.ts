@@ -238,6 +238,43 @@ export async function createCategory(input: { groupId: string; name: string; def
   return data.id as string;
 }
 
+// ——— Groupes (Fixes, Bouffe…) : chacun appartient à un type (revenu, dépense, épargne) ———
+
+/** Nouveau groupe, placé en dernier. */
+export async function createGroup(name: string, kind: GroupKind) {
+  const { data: last, error: e1 } = await supabase.from('groups').select('position')
+    .order('position', { ascending: false }).limit(1);
+  if (e1) throw e1;
+  const { error } = await supabase.from('groups').insert({ name: name.trim(), kind, position: last.length ? last[0].position + 1 : 0 });
+  if (error) throw error;
+}
+
+export async function renameGroup(id: string, name: string) {
+  const { error } = await supabase.from('groups').update({ name: name.trim() }).eq('id', id);
+  if (error) throw error;
+}
+
+/** Enregistre les positions calculées par moveGroup. */
+export async function setGroupPositions(changes: { id: string; position: number }[]) {
+  for (const c of changes) {
+    const { error } = await supabase.from('groups').update({ position: c.position }).eq('id', c.id);
+    if (error) throw error;
+  }
+}
+
+/**
+ * Supprime un groupe. Ses catégories (archivées comprises) passent d'abord dans `moveTo` : la base refuse
+ * de supprimer un groupe qui a encore des catégories (on delete restrict), donc rien n'est jamais perdu.
+ */
+export async function deleteGroup(id: string, moveTo?: string) {
+  if (moveTo) {
+    const { error } = await supabase.from('categories').update({ group_id: moveTo }).eq('group_id', id);
+    if (error) throw error;
+  }
+  const { error } = await supabase.from('groups').delete().eq('id', id);
+  if (error) throw new Error(error.code === '23503' ? 'Ce groupe contient encore des catégories.' : error.message);
+}
+
 /** Pas de suppression (les lignes de saisie y sont liées) : on archive avec `archived: true`. */
 export async function updateCategory(
   id: string, patch: { name?: string; groupId?: string; defaultPlannedCents?: number; archived?: boolean },
