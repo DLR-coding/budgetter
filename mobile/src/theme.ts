@@ -20,6 +20,8 @@ export const colors = {
 
   income: '#8CCBA5',      // revenus : vert calme
   incomeBg: '#1A2E25',
+  live: '#3DDC84',        // « actif » : point vert vif
+  liveGlow: 'rgba(61, 220, 132, 0.22)',
   info: '#6F8FDB',        // options, confirmations
   infoBg: '#1A2A44',
   warn: '#FF9E57',        // dépassements, lignes à vérifier

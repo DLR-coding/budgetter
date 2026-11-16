@@ -4,7 +4,7 @@ import { Fragment, useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AiSettingsSheet } from '../../src/components/AiSettingsSheet';
-import { BudgetAvatar, BudgetEditSheet, BudgetSheet } from '../../src/components/BudgetSheet';
+import { ActiveDot, BudgetAvatar, BudgetEditSheet, BudgetSheet } from '../../src/components/BudgetSheet';
 import { GroupEditSheet } from '../../src/components/GroupEditSheet';
 import { Card, Divider, ListRow, SectionTitle } from '../../src/components/ui';
 import { loadAiSettings } from '../../src/lib/ai-settings';
@@ -29,7 +29,7 @@ export default function SettingsScreen() {
   const [editingAi, setEditingAi] = useState(false);
   const [budgets, setBudgets] = useState<{ budgets: BudgetRow[]; currentId: string | null }>({ budgets: [], currentId: null });
   const [editingBudget, setEditingBudget] = useState<BudgetRow | null>(null);
-  const [switching, setSwitching] = useState(false);
+  const [creating, setCreating] = useState(false);
   const loadAi = useCallback(() => { loadAiSettings().then(setAi, () => setAi(null)); }, []);
 
   const load = useCallback(async () => {
@@ -56,13 +56,13 @@ export default function SettingsScreen() {
       <Text style={s.title} accessibilityRole="header">Réglages</Text>
       {error && <Text style={s.error}>Impossible de charger les réglages : {error}</Text>}
 
-      <SectionTitle title="Budgets" right={{ label: 'Changer', onPress: () => setSwitching(true) }} />
+      <SectionTitle title="Budgets" right={{ label: 'Nouveau budget', onPress: () => setCreating(true) }} />
       <Card>
         {budgets.budgets.map((b, i) => (
           <Fragment key={b.id}>
             {i > 0 && <Divider />}
-            <ListRow label={b.name} left={<BudgetAvatar name={b.name} />} chevron valueTone="muted"
-              value={b.id === budgets.currentId ? 'Actif' : undefined} onPress={() => setEditingBudget(b)} />
+            <ListRow label={b.name} left={<BudgetAvatar name={b.name} />} chevron
+              right={b.id === budgets.currentId ? <ActiveDot /> : undefined} onPress={() => setEditingBudget(b)} />
           </Fragment>
         ))}
       </Card>
@@ -118,8 +118,9 @@ export default function SettingsScreen() {
 
       <GroupEditSheet visible={addingGroup != null} group={null} defaultKind={addingGroup ?? undefined} groups={groups} cats={cats}
         onClose={() => setAddingGroup(null)} onSaved={load} />
-      <BudgetSheet visible={switching} onClose={() => setSwitching(false)} onChanged={load} />
+      <BudgetSheet visible={creating} createOnly onClose={() => setCreating(false)} onChanged={load} />
       <BudgetEditSheet budget={editingBudget} isLast={budgets.budgets.length <= 1}
+        isCurrent={editingBudget?.id === budgets.currentId}
         onClose={() => setEditingBudget(null)} onSaved={load} />
       <AiSettingsSheet visible={editingAi} current={ai} onClose={() => setEditingAi(false)} onSaved={loadAi} />
     </ScrollView>

@@ -17,8 +17,22 @@ export function BudgetAvatar({ name, size = 28 }: { name: string; size?: number 
   );
 }
 
-/** Liste des budgets : toucher pour basculer, « Nouveau budget » pour en créer un (vide, puis actif). */
-export function BudgetSheet({ visible, onClose, onChanged }: { visible: boolean; onClose: () => void; onChanged: () => void }) {
+/** Point vert vif avec halo : budget actif. */
+export function ActiveDot() {
+  return (
+    <View style={s.dotGlow} accessibilityLabel="Budget actif">
+      <View style={s.dot} />
+    </View>
+  );
+}
+
+/**
+ * Liste des budgets : toucher pour basculer, « Nouveau budget » pour en créer un (vide, puis actif).
+ * `createOnly` : ouvre directement le formulaire de création, sans la liste (Réglages).
+ */
+export function BudgetSheet({ visible, onClose, onChanged, createOnly = false }: {
+  visible: boolean; onClose: () => void; onChanged: () => void; createOnly?: boolean;
+}) {
   const [data, setData] = useState<{ budgets: BudgetRow[]; currentId: string | null } | null>(null);
   const [newName, setNewName] = useState<string | null>(null); // null : formulaire fermé
   const [busy, setBusy] = useState(false);
@@ -26,9 +40,9 @@ export function BudgetSheet({ visible, onClose, onChanged }: { visible: boolean;
 
   useEffect(() => {
     if (!visible) return;
-    setNewName(null); setError(null);
-    loadBudgets().then(setData, (e: Error) => setError(e.message));
-  }, [visible]);
+    setNewName(createOnly ? '' : null); setError(null);
+    if (!createOnly) loadBudgets().then(setData, (e: Error) => setError(e.message));
+  }, [visible, createOnly]);
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -47,9 +61,9 @@ export function BudgetSheet({ visible, onClose, onChanged }: { visible: boolean;
   };
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="Budgets">
+    <BottomSheet visible={visible} onClose={onClose} title={createOnly ? 'Nouveau budget' : 'Budgets'}>
       <View style={{ gap: 6 }}>
-        {!data && !error && <ActivityIndicator color={colors.accent} />}
+        {!createOnly && !data && !error && <ActivityIndicator color={colors.accent} />}
         {data?.budgets.map((b) => {
           const current = b.id === data.currentId;
           return (
@@ -57,7 +71,7 @@ export function BudgetSheet({ visible, onClose, onChanged }: { visible: boolean;
               disabled={busy} onPress={() => (current ? onClose() : run(() => switchBudget(b.id)))}>
               <BudgetAvatar name={b.name} />
               <Text style={s.optionText} numberOfLines={1}>{b.name}</Text>
-              {current && <Ionicons name="checkmark" size={20} color={colors.accentText} />}
+              {current && <ActiveDot />}
             </Pressable>
           );
         })}
@@ -83,9 +97,9 @@ export function BudgetSheet({ visible, onClose, onChanged }: { visible: boolean;
   );
 }
 
-/** Renommer ou supprimer un budget. La suppression se confirme en retapant le nom. */
-export function BudgetEditSheet({ budget, isLast, onClose, onSaved }: {
-  budget: BudgetRow | null; isLast: boolean; onClose: () => void; onSaved: () => void;
+/** Aller sur un budget, le renommer ou le supprimer. La suppression se confirme en retapant le nom. */
+export function BudgetEditSheet({ budget, isLast, isCurrent, onClose, onSaved }: {
+  budget: BudgetRow | null; isLast: boolean; isCurrent: boolean; onClose: () => void; onSaved: () => void;
 }) {
   const [name, setName] = useState('');
   const [confirm, setConfirm] = useState<string | null>(null); // null : pas en train de supprimer
@@ -118,11 +132,21 @@ export function BudgetEditSheet({ budget, isLast, onClose, onSaved }: {
         <View style={{ gap: 12 }}>
           <TextInput style={s.input} value={name} onChangeText={setName} maxLength={60}
             accessibilityLabel="Nom du budget" />
-          <PrimaryButton label="Enregistrer" disabled={!name.trim() || name.trim() === budget.name || busy}
-            onPress={() => run(() => renameBudget(budget.id, name))} />
-          {isLast
-            ? <Text style={s.muted}>C’est ton seul budget : crée-en un autre pour pouvoir supprimer celui-ci.</Text>
-            : <PrimaryButton label="Supprimer ce budget" variant="secondary" onPress={() => setConfirm('')} />}
+          {isCurrent ? (
+            <View style={s.currentRow}><ActiveDot /><Text style={s.muted}>C’est le budget actif</Text></View>
+          ) : (
+            <PrimaryButton label="Aller sur ce budget" disabled={busy} onPress={() => run(() => switchBudget(budget.id))} />
+          )}
+          <View style={s.buttons}>
+            <View style={{ flex: 1 }}>
+              <PrimaryButton label="Renommer" variant="secondary" disabled={!name.trim() || name.trim() === budget.name || busy}
+                onPress={() => run(() => renameBudget(budget.id, name))} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <PrimaryButton label="Supprimer" variant="secondary" disabled={isLast || busy} onPress={() => setConfirm('')} />
+            </View>
+          </View>
+          {isLast && <Text style={s.muted}>C’est ton seul budget : crée-en un autre pour pouvoir supprimer celui-ci.</Text>}
           {error && <Text style={s.error}>{error}</Text>}
         </View>
       ) : (
@@ -164,4 +188,7 @@ const s = StyleSheet.create({
   warn: { color: colors.warn, fontFamily: font.regular, fontSize: 15, lineHeight: 21 },
   error: { color: colors.warn, fontFamily: font.regular, fontSize: 14 },
   buttons: { flexDirection: 'row', gap: 10 },
+  currentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 40 },
+  dotGlow: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.liveGlow, alignItems: 'center', justifyContent: 'center' },
+  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.live },
 });
