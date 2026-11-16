@@ -110,7 +110,7 @@ export function RecurrenceEditSheet({ visible, groups, cats, recurrence, onClose
             trackColor={{ false: colors.surface2, true: colors.accent }} thumbColor={colors.text} />
         </View>
 
-        <Text style={s.note}>Les saisies sont créées automatiquement chaque mois.</Text>
+        <Text style={s.note}>La saisie est créée automatiquement le jour venu, chaque mois. Une modification s’applique aussi à celle de ce mois-ci.</Text>
         {error && <Text style={s.error}>{error}</Text>}
         <PrimaryButton label="Enregistrer" onPress={save} disabled={busy} />
       </ScrollView>

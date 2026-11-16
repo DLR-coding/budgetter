@@ -13,12 +13,17 @@ export type CategoryRow = {
 
 const toMonth = (d: string): Month => d.slice(0, 7);
 const toDate = (m: Month) => `${m}-01`;
+/** Jour local du téléphone (AAAA-MM-JJ) : le serveur est en UTC. */
+const localDay = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** Crée les charges récurrentes dont le jour est arrivé (migration 0010). */
+const generateRecurrences = () => supabase.rpc('generate_recurrences', { up_to: localDay() });
 
 /** Au premier lancement : crée « Mon budget » et les catégories de l'Excel, puis les charges récurrentes du mois (budget actif). */
 export async function bootstrap() {
   const { error } = await supabase.rpc('seed_default_categories');
   if (error) throw error;
-  const { error: e2 } = await supabase.rpc('generate_recurrences');
+  const { error: e2 } = await generateRecurrences();
   if (e2) throw e2;
 }
 
@@ -250,7 +255,10 @@ export async function loadRecurrences(): Promise<RecurrenceRow[]> {
   return data as RecurrenceRow[];
 }
 
-/** Crée (sans id) ou modifie une charge récurrente, puis génère les saisies manquantes. */
+/**
+ * Crée (sans id) ou modifie une charge récurrente, puis génère les saisies dont le jour est arrivé.
+ * Une modification s'applique aussi à la saisie déjà créée ce mois-ci (migration 0010).
+ */
 export async function saveRecurrence(r: {
   id?: string; categoryId: string; label: string; amountCents: number; dayOfMonth: number; active?: boolean;
 }) {
@@ -262,7 +270,11 @@ export async function saveRecurrence(r: {
     ? await supabase.from('recurrences').update(row).eq('id', r.id)
     : await supabase.from('recurrences').insert(row);
   if (error) throw error;
-  const { error: e2 } = await supabase.rpc('generate_recurrences');
+  if (r.id) {
+    const { error: e1 } = await supabase.rpc('apply_recurrence_to_month', { p_id: r.id, p_today: localDay() });
+    if (e1) throw e1;
+  }
+  const { error: e2 } = await generateRecurrences();
   if (e2) throw e2;
 }
 

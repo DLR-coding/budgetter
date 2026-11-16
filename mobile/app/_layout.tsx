@@ -6,7 +6,6 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Login } from '../src/components/Login';
-import { monthOf } from '../src/lib/budget';
 import { bootstrap } from '../src/lib/data';
 import { supabase } from '../src/lib/supabase';
 import { colors } from '../src/theme';
@@ -22,14 +21,15 @@ export default function RootLayout() {
   }, []);
 
   // Premier lancement : catégories de l'Excel + charges récurrentes du mois.
-  // Relancé au retour au premier plan quand le mois a changé (appli restée ouverte).
+  // Relancé au retour au premier plan quand le jour a changé (appli restée ouverte) :
+  // une charge récurrente n'est créée que le jour venu.
   useEffect(() => {
     if (!session) return;
-    let month = monthOf(new Date());
+    let day = new Date().toDateString();
     bootstrap().catch(console.warn);
     const sub = AppState.addEventListener('change', (state) => {
-      if (state !== 'active' || monthOf(new Date()) === month) return;
-      month = monthOf(new Date());
+      if (state !== 'active' || new Date().toDateString() === day) return;
+      day = new Date().toDateString();
       bootstrap().catch(console.warn);
     });
     return () => sub.remove();
