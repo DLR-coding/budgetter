@@ -9,7 +9,7 @@ import {
 import { haptics } from '../lib/haptics';
 import { KINDS, moveGroup } from '../lib/settings';
 import { colors, font, radius } from '../theme';
-import { BottomSheet, CategoryPill, PrimaryButton } from './ui';
+import { ActionTile, BottomSheet, CategoryPill, PrimaryButton } from './ui';
 
 type Props = {
   visible: boolean;
@@ -93,7 +93,7 @@ export function GroupEditSheet({ visible, group, defaultKind = 'depense', groups
             <View style={s.buttons}>
               <View style={{ flex: 1 }}><PrimaryButton label="Annuler" variant="secondary" onPress={() => setDeleting(false)} /></View>
               <View style={{ flex: 1 }}>
-                <PrimaryButton label={busy ? 'Suppression…' : 'Supprimer'}
+                <PrimaryButton label={busy ? 'Suppression…' : 'Supprimer'} variant="danger"
                   disabled={busy || (ownCats.length > 0 && !moveTo)}
                   onPress={() => run(() => deleteGroup(group.id, moveTo ?? undefined))} />
               </View>
@@ -123,18 +123,14 @@ export function GroupEditSheet({ visible, group, defaultKind = 'depense', groups
 
             {group && moves && (
               <>
-                <Text style={s.label}>Ordre dans {kindLabel}</Text>
+                <Text style={s.label}>Place dans {kindLabel}</Text>
                 <View style={s.buttons}>
-                  <View style={{ flex: 1 }}>
-                    <PrimaryButton label="Monter" variant="secondary" disabled={busy || !moves.up.length}
-                      onPress={() => run(() => setGroupPositions(moves.up), false)} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <PrimaryButton label="Descendre" variant="secondary" disabled={busy || !moves.down.length}
-                      onPress={() => run(() => setGroupPositions(moves.down), false)} />
-                  </View>
+                  <ActionTile icon="arrow-up" label="Monter" disabled={busy || !moves.up.length}
+                    onPress={() => run(() => setGroupPositions(moves.up), false)} />
+                  <ActionTile icon="arrow-down" label="Descendre" disabled={busy || !moves.down.length}
+                    onPress={() => run(() => setGroupPositions(moves.down), false)} />
+                  <ActionTile icon="trash-outline" label="Supprimer" tone="danger" disabled={busy} onPress={() => setDeleting(true)} />
                 </View>
-                <PrimaryButton label="Supprimer ce groupe" variant="secondary" disabled={busy} onPress={() => setDeleting(true)} />
               </>
             )}
           </>
@@ -154,6 +150,6 @@ const s = StyleSheet.create({
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   buttons: { flexDirection: 'row', gap: 10 },
   text: { color: colors.text, fontFamily: font.regular, fontSize: 15, lineHeight: 21 },
-  warn: { color: colors.warn, fontFamily: font.regular, fontSize: 15, lineHeight: 21 },
+  warn: { color: colors.danger, fontFamily: font.regular, fontSize: 15, lineHeight: 21 },
   error: { color: colors.warn, fontFamily: font.regular, fontSize: 14 },
 });

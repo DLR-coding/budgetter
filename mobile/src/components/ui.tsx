@@ -136,15 +136,31 @@ export function EntryIcon({ source, kind, size = 40 }: { source: EntryRow['sourc
 }
 
 export function PrimaryButton({ label, trailing, onPress, disabled, variant = 'accent' }: {
-  label: string; trailing?: string; onPress: () => void; disabled?: boolean; variant?: 'accent' | 'secondary';
+  label: string; trailing?: string; onPress: () => void; disabled?: boolean; variant?: 'accent' | 'secondary' | 'danger';
 }) {
-  const fg = variant === 'accent' ? colors.accentInk : colors.text;
+  const fg = variant === 'secondary' ? colors.text : colors.accentInk;
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={withHaptic(onPress)}
-      style={({ pressed }) => [s.button, variant === 'accent' ? s.buttonAccent : s.buttonSecondary,
+      style={({ pressed }) => [s.button, variant === 'accent' ? s.buttonAccent : variant === 'danger' ? s.buttonDanger : s.buttonSecondary,
         trailing != null && s.buttonSplit, (pressed || disabled) && { opacity: disabled ? 0.4 : 0.85 }]}>
       <Text style={[s.buttonText, { color: fg }]}>{label}</Text>
       {trailing != null && <Text style={[s.buttonText, { color: fg }]}>{trailing}</Text>}
+    </Pressable>
+  );
+}
+
+/** Action d'un panneau : icône dans une tuile, libellé court dessous. Plusieurs tuiles se partagent une ligne. */
+export function ActionTile({ icon, label, onPress, tone = 'default', disabled, active }: {
+  icon: IconName; label: string; onPress: () => void; tone?: 'default' | 'accent' | 'danger'; disabled?: boolean; active?: boolean;
+}) {
+  const fg = tone === 'accent' ? colors.accentInk : tone === 'danger' ? colors.danger : colors.text;
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled, selected: active }}
+      disabled={disabled} onPress={withHaptic(onPress)}
+      style={({ pressed }) => [s.tile, tone === 'accent' ? s.tileAccent : tone === 'danger' ? s.tileDanger : s.tileDefault,
+        active && s.tileActive, (pressed || disabled) && { opacity: disabled ? 0.35 : 0.8 }]}>
+      <Ionicons name={icon} size={22} color={fg} />
+      <Text style={[s.tileText, { color: fg }]} numberOfLines={1}>{label}</Text>
     </Pressable>
   );
 }
@@ -220,6 +236,13 @@ const s = StyleSheet.create({
   buttonSplit: { justifyContent: 'space-between' },
   buttonAccent: { backgroundColor: colors.accent },
   buttonSecondary: { backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  buttonDanger: { backgroundColor: colors.danger },
+  tile: { flex: 1, minHeight: 76, borderRadius: radius.key, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6 },
+  tileDefault: { backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  tileAccent: { backgroundColor: colors.accent },
+  tileDanger: { backgroundColor: colors.dangerBg },
+  tileActive: { borderColor: colors.accentText },
+  tileText: { fontFamily: font.medium, fontSize: 13 },
   buttonText: { fontFamily: font.semibold, fontSize: 17 },
 
   banner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: radius.card },

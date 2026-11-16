@@ -26,6 +26,8 @@ export const colors = {
   infoBg: '#1A2A44',
   warn: '#FF9E57',        // dépassements, lignes à vérifier
   warnBg: '#2E2216',
+  danger: '#FF5A5F',      // suppressions définitives
+  dangerBg: '#33181A',
 };
 
 export const radius = { card: 22, pill: 999, key: 18 };

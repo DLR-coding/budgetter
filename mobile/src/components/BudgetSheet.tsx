@@ -6,7 +6,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { createBudget, deleteBudget, loadBudgets, renameBudget, switchBudget, type BudgetRow } from '../lib/data';
 import { haptics } from '../lib/haptics';
 import { colors, font, radius } from '../theme';
-import { BottomSheet, PrimaryButton } from './ui';
+import { ActionTile, BottomSheet, PrimaryButton } from './ui';
 
 /** Pastille ronde avec l'initiale du budget. */
 export function BudgetAvatar({ name, size = 28 }: { name: string; size?: number }) {
@@ -97,17 +97,21 @@ export function BudgetSheet({ visible, onClose, onChanged, createOnly = false }:
   );
 }
 
-/** Aller sur un budget, le renommer ou le supprimer. La suppression se confirme en retapant le nom. */
+/**
+ * Fiche d'un budget : en-tête (pastille, nom, état), puis trois actions sur une ligne :
+ * ouvrir, renommer (le nom devient modifiable sur place), supprimer (rouge, confirmé en retapant le nom).
+ */
 export function BudgetEditSheet({ budget, isLast, isCurrent, onClose, onSaved }: {
   budget: BudgetRow | null; isLast: boolean; isCurrent: boolean; onClose: () => void; onSaved: () => void;
 }) {
   const [name, setName] = useState('');
+  const [renaming, setRenaming] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null); // null : pas en train de supprimer
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (budget) { setName(budget.name); setConfirm(null); setError(null); }
+    if (budget) { setName(budget.name); setRenaming(false); setConfirm(null); setError(null); }
   }, [budget]);
 
   const run = async (action: () => Promise<void>, deleting = false) => {
@@ -125,43 +129,66 @@ export function BudgetEditSheet({ budget, isLast, isCurrent, onClose, onSaved }:
       setBusy(false);
     }
   };
+  const canRename = !!name.trim() && name.trim() !== budget?.name && !busy;
 
   return (
-    <BottomSheet visible={budget != null} onClose={onClose} title={confirm == null ? 'Budget' : 'Supprimer ce budget ?'}>
+    <BottomSheet visible={budget != null} onClose={onClose} title={confirm == null ? '' : 'Supprimer ce budget ?'}>
       {budget && (confirm == null ? (
-        <View style={{ gap: 12 }}>
-          <TextInput style={s.input} value={name} onChangeText={setName} maxLength={60}
-            accessibilityLabel="Nom du budget" />
-          {isCurrent ? (
-            <View style={s.currentRow}><ActiveDot /><Text style={s.muted}>C’est le budget actif</Text></View>
-          ) : (
-            <PrimaryButton label="Aller sur ce budget" disabled={busy} onPress={() => run(() => switchBudget(budget.id))} />
-          )}
-          <View style={s.buttons}>
-            <View style={{ flex: 1 }}>
-              <PrimaryButton label="Renommer" variant="secondary" disabled={!name.trim() || name.trim() === budget.name || busy}
-                onPress={() => run(() => renameBudget(budget.id, name))} />
+        <View style={{ gap: 18 }}>
+          <View style={s.identity}>
+            <BudgetAvatar name={name || budget.name} size={52} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              {renaming ? (
+                <View style={s.renameRow}>
+                  <TextInput style={[s.input, { flex: 1 }]} value={name} onChangeText={setName} maxLength={60} autoFocus
+                    returnKeyType="done" onSubmitEditing={() => canRename && run(() => renameBudget(budget.id, name))}
+                    accessibilityLabel="Nouveau nom du budget" />
+                  <Pressable style={[s.confirmBtn, !canRename && { opacity: 0.4 }]} disabled={!canRename}
+                    onPress={() => { haptics.press(); run(() => renameBudget(budget.id, name)); }}
+                    accessibilityRole="button" accessibilityLabel="Enregistrer le nom">
+                    <Ionicons name="checkmark" size={22} color={colors.accentInk} />
+                  </Pressable>
+                </View>
+              ) : (
+                <>
+                  <Text style={s.identityName} numberOfLines={1}>{budget.name}</Text>
+                  {isCurrent
+                    ? <View style={s.state}><ActiveDot /><Text style={s.stateLive}>Budget actif</Text></View>
+                    : <Text style={s.muted}>Pas ouvert en ce moment</Text>}
+                </>
+              )}
             </View>
-            <View style={{ flex: 1 }}>
-              <PrimaryButton label="Supprimer" variant="secondary" disabled={isLast || busy} onPress={() => setConfirm('')} />
-            </View>
+          </View>
+
+          <View style={s.tiles}>
+            <ActionTile icon={isCurrent ? 'checkmark-circle' : 'enter-outline'} label={isCurrent ? 'Ouvert' : 'Ouvrir'}
+              tone={isCurrent ? 'default' : 'accent'} disabled={isCurrent || busy}
+              onPress={() => run(() => switchBudget(budget.id))} />
+            <ActionTile icon="pencil" label="Renommer" active={renaming} disabled={busy}
+              onPress={() => { setName(budget.name); setRenaming(!renaming); }} />
+            <ActionTile icon="trash-outline" label="Supprimer" tone="danger" disabled={isLast || busy}
+              onPress={() => setConfirm('')} />
           </View>
           {isLast && <Text style={s.muted}>C’est ton seul budget : crée-en un autre pour pouvoir supprimer celui-ci.</Text>}
           {error && <Text style={s.error}>{error}</Text>}
         </View>
       ) : (
         <View style={{ gap: 12 }}>
-          <Text style={s.warn}>
-            Toutes les saisies, catégories, prévus, récurrences et photos de tickets de « {budget.name} » seront
-            supprimés définitivement.
-          </Text>
+          <View style={s.dangerBox}>
+            <Ionicons name="warning-outline" size={20} color={colors.danger} />
+            <Text style={s.dangerText}>
+              Toutes les saisies, catégories, prévus, récurrences et photos de tickets de « {budget.name} » seront
+              supprimés définitivement.
+            </Text>
+          </View>
           <Text style={s.muted}>Tape « {budget.name} » pour confirmer.</Text>
           <TextInput style={s.input} value={confirm} onChangeText={setConfirm} autoFocus autoCapitalize="none"
             accessibilityLabel={`Tape ${budget.name} pour confirmer`} />
           <View style={s.buttons}>
             <View style={{ flex: 1 }}><PrimaryButton label="Annuler" variant="secondary" onPress={() => setConfirm(null)} /></View>
             <View style={{ flex: 1 }}>
-              <PrimaryButton label={busy ? 'Suppression…' : 'Supprimer'} disabled={confirm.trim() !== budget.name || busy}
+              <PrimaryButton label={busy ? 'Suppression…' : 'Supprimer'} variant="danger"
+                disabled={confirm.trim() !== budget.name || busy}
                 onPress={() => run(() => deleteBudget(budget.id), true)} />
             </View>
           </View>
@@ -185,7 +212,15 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface2, color: colors.text, fontFamily: font.regular, fontSize: 17,
   },
   muted: { color: colors.textMuted, fontFamily: font.regular, fontSize: 14, lineHeight: 20 },
-  warn: { color: colors.warn, fontFamily: font.regular, fontSize: 15, lineHeight: 21 },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 56 },
+  identityName: { color: colors.text, fontFamily: font.semibold, fontSize: 22, letterSpacing: -0.3 },
+  state: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, marginLeft: -6 },
+  stateLive: { color: colors.live, fontFamily: font.medium, fontSize: 14 },
+  renameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  confirmBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  tiles: { flexDirection: 'row', gap: 10 },
+  dangerBox: { flexDirection: 'row', gap: 10, padding: 14, borderRadius: radius.key, backgroundColor: colors.dangerBg },
+  dangerText: { flex: 1, color: colors.danger, fontFamily: font.regular, fontSize: 15, lineHeight: 21 },
   error: { color: colors.warn, fontFamily: font.regular, fontSize: 14 },
   buttons: { flexDirection: 'row', gap: 10 },
   currentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 40 },
