@@ -92,10 +92,13 @@ dépendance à React ni Supabase, et la couvrir de tests.
   (le réseau WSL n’est pas joignable directement). Android 8 (API 26) minimum, Vulkan requis.
 - **Build local Windows (sans quota EAS)** : clone dans `C:\Users\drakotomahefa\Desktop\code\budget-app`
   (`git pull` depuis WSL, `.env` copié à la main). Dans `mobile/` : `npm ci`, puis
-  `set APP_VARIANT=local&& npx expo prebuild --platform android --no-install` (si paquets natifs changés),
-  puis dans `android/` avec `JAVA_HOME` = JDK 21 : `gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a`.
-  APK : `android/app/build/outputs/apk/release/app-release.apk` → `adb install -r`. Appli « Budgetter (local) »
-  (`com.dlrcoding.budget.local`, `app.config.js`), installée à côté de l'appli EAS (signature différente).
+  `npx expo prebuild --platform android --no-install` (si paquets natifs changés),
+  puis dans `android/` avec `JAVA_HOME` = JDK 21 (`C:\Program Files\Eclipse Adoptium\jdk-21…`, le dossier change
+  à chaque mise à jour) : `gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a`.
+  APK : `android/app/build/outputs/apk/release/app-release.apk` → `adb install -r`. Depuis le 23/11, l'appli
+  « Budgetter » du téléphone (`com.dlrcoding.budget`) vient de ce build local (clé de debug) : un APK EAS ne
+  peut plus s'installer par-dessus sans la désinstaller. `APP_VARIANT=local` (`app.config.js`) donne une
+  appli à part, « Budgetter (local) ».
 - Variables dans `mobile/.env` (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`).
   Ne jamais committer `.env`.
 
